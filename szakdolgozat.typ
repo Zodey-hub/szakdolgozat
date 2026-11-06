@@ -130,7 +130,7 @@ Tudomásul veszem, hogy szakdolgozatomat a Szegedi Tudományegyetem a Diplomamun
 
 #v(1em)
 
-#par(first-line-indent: 0em)[Kelt: Szeged, 2026. november 6.]
+#par(first-line-indent: 0em)[Szeged, 2026. november 6.]
 
 #v(1em)
 
