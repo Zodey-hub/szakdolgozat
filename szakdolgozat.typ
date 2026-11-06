@@ -22,9 +22,14 @@
 
 #set text(font: "Times New Roman", size: 12pt, lang: "hu", hyphenate: false)
 #set par(justify: true, first-line-indent: (amount: 1.5em, all: true))
+#set list(indent: 1.5em)
 
 #show heading.where(level: 1): set heading(numbering: none)
-#show heading.where(level: 1): set block(above: 1em, below: 1em)
+#show heading.where(level: 1): it => counter(heading).step() + it
+#show heading.where(level: 1): set block(below: 1em)
+#show heading.where(level: 1): set align(center)
+
+#let todo(body) = text(fill: red)[\[TODO: #body\]]
 
 // ---------- Címlap ----------
 
@@ -47,17 +52,23 @@
     ],
     grid(
       columns: (1fr, 1fr),
-      column-gutter: 2em,
-      row-gutter: 0.5em,
-      emph[Készítette:], emph[Témavezető:],
-      [
-        *#context document.author.first()* \
-        programtervező informatikus \ BSc szakos hallgató
-      ],
-      [
-        *Dr. Siket István* \
-        adjunktus
-      ],
+      align: center + top,
+      box(align(left)[
+        _Készítette:_
+        #pad(left: 1.5em, top: -0.5em)[
+          *#context document.author.first()* \
+          programtervező informatikus \
+          BSc szakos hallgató
+        ]
+      ]),
+      box(align(left)[
+        _Témavezető:_
+        #pad(left: 1.5em, top: -0.5em)[
+          *Dr. Siket István* \
+          Szoftverfejlesztés Tanszék \
+          adjunktus
+        ]
+      ]),
     ),
     [Szeged, 2026],
   )
@@ -65,6 +76,41 @@
 
 #pagebreak()
 #counter(page).update(1)
+
+// ---------- Tartalmi összefoglaló ----------
+
+= Tartalmi összefoglaló
+
+== A téma megnevezése
+
+#context document.title.
+
+== A megadott feladat megfogalmazása
+
+A feladat egy Rust nyelven írt, újrahasznosítható könyvtárakból álló webes keretrendszer megtervezése és elkészítése, amelynek elsődleges szempontja a nagy futási teljesítmény és a lefordított program minimális mérete. A könyvtárak gyakorlati használhatóságát egy publikus EPUB-kereső és -letöltő webalkalmazás mutatja be.
+
+== A megoldási mód
+
+A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezetre építve. A kérések elemzését az httparse, a protokoll típusait a http könyvtár biztosítja. Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs–érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül. Ennek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók. A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást a Pico.css végzi, így kliensoldali JavaScriptre alig van szükség.
+
+== Alkalmazott eszközök, módszerek
+
+- Programozási nyelv: Rust
+- Aszinkron futtatókörnyezet: smol
+- HTTP-szerver: http, httparse
+- Adatbázis: redb, rkyv
+- Felhasználói felület: build_html, Pico.css
+- Verziókezelés: Git
+
+== Elért eredmények
+
+#todo[a mérési eredmények rövid összefoglalása: válaszidő, áteresztőképesség, memóriahasználat és binárisméret összevetve egy elterjedt keretrendszerre (pl. axum vagy actix-web) és SQLite-ra épülő megoldással]
+
+== Kulcsszavak
+
+Rust, webes keretrendszer, HTTP-szerver, zero-copy szerializáció, beágyazott adatbázis, teljesítményoptimalizálás
+
+#pagebreak()
 
 // ---------- Nyilatkozat ----------
 
