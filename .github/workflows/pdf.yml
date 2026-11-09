@@ -19,20 +19,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Microsoft core fontok telepítése
+      - name: Times New Roman letöltése
         run: |
-          echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ttf-mscorefonts-installer fontconfig
-          sudo fc-cache -f
-          fc-list | grep -i "Times New Roman" || { echo "Times New Roman nem található"; exit 1; }
+          curl -sSfL --retry 3 -o times32.exe https://downloads.sourceforge.net/corefonts/times32.exe
+          echo "db56595ec6ef5d3de5c24994f001f03b2a13e37cee27bc25c58f6f43e8f807ab  times32.exe" | sha256sum -c -
+          7z e -y -ofonts times32.exe '*.TTF'
 
       - uses: typst-community/setup-typst@v4
         with:
           typst-version: "0.15.1"
 
       - name: PDF fordítása
-        run: typst compile szakdolgozat.typ szakdolgozat.pdf
+        run: typst compile --font-path fonts szakdolgozat.typ szakdolgozat.pdf
 
       - name: Release frissítése
         env:
