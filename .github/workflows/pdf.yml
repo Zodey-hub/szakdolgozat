@@ -1,0 +1,46 @@
+name: PDF fordítása és kiadása
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pdf-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: PDF fordítása és kiadása
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Microsoft core fontok telepítése
+        run: |
+          echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ttf-mscorefonts-installer fontconfig
+          sudo fc-cache -f
+          fc-list | grep -i "Times New Roman" || { echo "Times New Roman nem található"; exit 1; }
+
+      - uses: typst-community/setup-typst@v4
+        with:
+          typst-version: "0.15.1"
+
+      - name: PDF fordítása
+        run: typst compile szakdolgozat.typ szakdolgozat.pdf
+
+      - name: Release frissítése
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest szakdolgozat.pdf \
+            --target "${{ github.sha }}" \
+            --title "Szakdolgozat ($(date -u +'%Y-%m-%d %H:%M') UTC, ${GITHUB_SHA::7})" \
+            --notes "Automatikusan generált PDF a(z) ${{ github.sha }} commitból." \
+            --latest
