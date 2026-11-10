@@ -108,7 +108,7 @@ A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-min
 
 == Elért eredmények
 
-#todo[a mérési eredmények rövid összefoglalása: a futtatható állomány mérete és a függőségek száma, a bemutató alkalmazás válaszideje, áteresztőképessége és memóriahasználata, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
+#todo[a mérési eredmények rövid összefoglalása: a futtatható állomány mérete, a bemutató alkalmazás válaszideje, áteresztőképessége és memóriahasználata, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
 
 == Kulcsszavak
 
@@ -129,14 +129,15 @@ Rust, webes keretrendszer, HTTP-szerver, zero-copy szerializáció, beágyazott 
 == Motiváció
 
 A webalkalmazások fejlesztése ma jellemzően nagy, általános célú keretrendszerekre épül.
-Ezek gyorsan használható, kényelmes megoldást adnak a leggyakoribb feladatokra, ennek azonban ára van: az alkalmazás a ténylegesen használt funkciók mellett a keretrendszer teljes függőségi fáját is magával hordozza.
-A sok függőség hosszabb fordítási időt, nagyobb futtatható állományt és nehezebben átlátható működést eredményez, az általánosság érdekében bevezetett absztrakciós rétegek pedig futásidőben is költséget jelentenek.
+Ezek gyorsan használható, kényelmes megoldást adnak a leggyakoribb feladatokra, ennek azonban ára van: a keretrendszer egyetlen egységként érkezik, így az alkalmazás azokat a képességeket is magával hordozza, amelyeket nem használ.
+Az általánosság érdekében bevezetett absztrakciós rétegek futásidőben költséget jelentenek, a futtatható állományba olyan kód is bekerül, amelyre az alkalmazásnak nincs szüksége, a sok rejtett mechanizmus pedig megnehezíti annak átlátását, hogy egy kérés kiszolgálása közben pontosan mi történik.
 Egy kisebb, jól körülhatárolt feladatot ellátó webalkalmazásnál a keretrendszer képességeinek nagy része kihasználatlan marad, a velük járó többletterhet viszont az alkalmazás ugyanúgy viseli.
 
 A Rust nyelv jó alapot ad ahhoz, hogy ez a kompromisszum újragondolható legyen.
 Futásidejű környezet és szemétgyűjtő nélkül, a C és a C++ nyelvhez hasonló teljesítményű gépi kódra fordul, a memóriabiztonságot pedig fordítási időben garantálja.
-Az ökoszisztémában megtalálhatók azok a kicsi, egyetlen feladatra összpontosító könyvtárak, amelyekből egy webes rendszer alsó rétegei felépíthetők anélkül, hogy egy teljes keretrendszert kellene átvenni.
-Dolgozatom kiinduló kérdése ezért az, hogy milyen teljesítmény és méret érhető el, ha a webalkalmazás alapjait -- a HTTP-szervert, az adattárolást és a felület előállítását -- nem kész keretrendszer adja, hanem kifejezetten erre a célra tervezett, a lehető legkevesebb függőséget használó saját könyvtárak.
+Az ökoszisztéma ráadásul erősen moduláris: egy webes rendszer alsó rétegei kicsi, egyetlen feladatra összpontosító könyvtárakból is felépíthetők anélkül, hogy egy teljes keretrendszert kellene átvenni.
+A függőségek száma önmagában nem hátrány: a jól megválogatott, kis könyvtárak párhuzamosan fordíthatók, külön-külön cserélhetők, és az alkalmazásba csak az kerül be, amire valóban szükség van.
+Dolgozatom kiinduló kérdése ezért az, hogy milyen teljesítmény és méret érhető el, ha a webalkalmazás alapjait -- a HTTP-szervert, az adattárolást és a felület előállítását -- nem kész keretrendszer adja, hanem kifejezetten erre a célra tervezett, gondosan megválogatott, kis könyvtárakra épülő saját megoldás.
 
 A témaválasztásnak személyes oka is van.
 Szívesen dolgozom Rust nyelven, és a saját projektjeimhez régóta szerettem volna egy olyan háttérrendszert, amelynek minden rétegét ismerem, és amely csak azt tartalmazza, amire ténylegesen szükségem van.
@@ -165,7 +166,7 @@ Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények köz�
 A kitűzött célok teljesülését mérésekkel ellenőrzöm.
 Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az elkészült rendszerre irányulnak, és három kérdésre keresnek választ:
 
-- *Méret:* Mekkora a lefordított futtatható állomány, hány függőségre épül, és az egyes tervezési és fordítási döntések mennyivel járulnak hozzá a méret csökkenéséhez.
+- *Méret:* Mekkora a lefordított futtatható állomány, és az egyes tervezési és fordítási döntések mennyivel járulnak hozzá a méret csökkenéséhez.
 - *Teljesítmény:* Milyen válaszidővel, áteresztőképességgel és memóriahasználattal szolgálja ki a kéréseket a bemutató alkalmazás.
 - *A tervezési döntések hatása:* Mennyit számítanak a gyakorlatban a keretrendszer kulcsfontosságú megoldásai, például a zero-copy olvasás a hagyományos deszerializáláshoz képest.
 
