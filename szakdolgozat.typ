@@ -104,7 +104,7 @@ A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezetre ép
 
 == Elért eredmények
 
-#todo[a mérési eredmények rövid összefoglalása: válaszidő, áteresztőképesség, memóriahasználat és binárisméret összevetve egy elterjedt keretrendszerre (pl. axum vagy actix-web) és SQLite-ra épülő megoldással]
+#todo[a mérési eredmények rövid összefoglalása: a futtatható állomány mérete és a függőségek száma, a bemutató alkalmazás válaszideje, áteresztőképessége és memóriahasználata, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
 
 == Kulcsszavak
 
@@ -115,6 +115,44 @@ Rust, webes keretrendszer, HTTP-szerver, zero-copy szerializáció, beágyazott 
 // ---------- Tartalomjegyzék ----------
 
 #outline(title: "Tartalomjegyzék", depth: 3)
+
+#pagebreak()
+
+// ---------- Bevezetés ----------
+
+= Bevezetés
+
+== Motiváció
+
+A webalkalmazások fejlesztése ma jellemzően nagy, általános célú keretrendszerekre épül. Ezek gyorsan használható, kényelmes megoldást adnak a leggyakoribb feladatokra, ennek azonban ára van: az alkalmazás a ténylegesen használt funkciók mellett a keretrendszer teljes függőségi fáját is magával hordozza. A sok függőség hosszabb fordítási időt, nagyobb futtatható állományt és nehezebben átlátható működést eredményez, az általánosság érdekében bevezetett absztrakciós rétegek pedig futásidőben is költséget jelentenek. Egy kisebb, jól körülhatárolt feladatot ellátó webalkalmazásnál a keretrendszer képességeinek nagy része kihasználatlan marad, a velük járó többletterhet viszont az alkalmazás ugyanúgy viseli.
+
+A Rust nyelv jó alapot ad ahhoz, hogy ez a kompromisszum újragondolható legyen. Futásidejű környezet és szemétgyűjtő nélkül, a C és a C++ nyelvhez hasonló teljesítményű gépi kódra fordul, a memóriabiztonságot pedig fordítási időben garantálja. Az ökoszisztémában megtalálhatók azok a kicsi, egyetlen feladatra összpontosító könyvtárak, amelyekből egy webes rendszer alsó rétegei felépíthetők anélkül, hogy egy teljes keretrendszert kellene átvenni. Dolgozatom kiinduló kérdése ezért az, hogy milyen teljesítmény és méret érhető el, ha a webalkalmazás alapjait -- a HTTP-szervert, az adattárolást és a felület előállítását -- nem kész keretrendszer adja, hanem kifejezetten erre a célra tervezett, a lehető legkevesebb függőséget használó saját könyvtárak.
+
+A témaválasztásnak személyes oka is van. Szívesen dolgozom Rust nyelven, és a saját projektjeimhez régóta szerettem volna egy olyan háttérrendszert, amelynek minden rétegét ismerem, és amely csak azt tartalmazza, amire ténylegesen szükségem van. A dolgozat ezért nem a meglévő keretrendszerek leváltására tesz kísérletet, hanem azt mutatja be, hogyan építhető fel egy ilyen rendszer, és milyen tervezési döntések vezetnek kicsi és gyors eredményhez.
+
+== Célkitűzés
+
+Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése és megvalósítása, amelynek minden tervezési döntését két szempont vezérli: a nagy futási teljesítmény és a lefordított program minimális mérete.
+
+#par(first-line-indent: 0em)[A munkám három fő területet ölel fel:]
+
+- *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezetre építve. Külső könyvtárat csak a kérések elemzéséhez (httparse) és a protokoll alapvető típusainak leírásához (http) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
+- *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül. A tárolt rekordokat beolvasáskor nem kell elemezni, deszerializálni, és új memóriaterületet sem kell foglalni számukra: a nyers bájtok közvetlenül Rust-struktúraként használhatók. Mivel mindkét könyvtár tisztán Rust nyelven íródott, az adatbázis statikusan a programmal együtt fordul, külön adatbázismotorra és más nyelvű függőségre nincs szükség.
+- *Szerveroldali megjelenítés:* Az oldalakat a szerveren állítom elő: a HTML-t a Rust nyelvben híres builder-mintára épülő generátorral hozom létre, a stílusokról pedig a Pico.css gondoskodik. A böngészőnek így kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre alig van szükség.
+
+A könyvtárak gyakorlati használhatóságát egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni. Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van. Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja, és alapot adjon a mérésekhez.
+
+A kitűzött célok teljesülését mérésekkel ellenőrzöm. Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az elkészült rendszerre irányulnak, és három kérdésre keresnek választ:
+
+- *Méret:* Mekkora a lefordított futtatható állomány, hány függőségre épül, és az egyes tervezési és fordítási döntések mennyivel járulnak hozzá a méret csökkenéséhez.
+- *Teljesítmény:* Milyen válaszidővel, áteresztőképességgel és memóriahasználattal szolgálja ki a kéréseket a bemutató alkalmazás.
+- *A tervezési döntések hatása:* Mennyit számítanak a gyakorlatban a keretrendszer kulcsfontosságú megoldásai, például a zero-copy olvasás a hagyományos deszerializáláshoz képest.
+
+== A dolgozat felépítése
+
+#todo[a fejezetek végleges sorrendjéhez igazítani]
+
+A dolgozatban először a felhasznált eszközöket és módszereket tekintem át: a Rust nyelv témához kapcsolódó tulajdonságait, az aszinkron programozási modellt, valamint a felhasznált könyvtárakat. Ezt követően a saját munkámat mutatom be: sorra veszem a keretrendszer rétegeit -- a HTTP-szervert, az adatbázisréteget és a HTML-generálást --, majd a rájuk épülő bemutató alkalmazást. A dolgozatot a mérések leírása és kiértékelése, végül az eredmények összefoglalása zárja.
 
 #pagebreak()
 
