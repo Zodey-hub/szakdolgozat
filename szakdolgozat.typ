@@ -7,7 +7,7 @@
 
 #set page(
   paper: "a4",
-  margin: (inside: 35mm, outside: 25mm, top: 25mm, bottom: 25mm),
+  margin: (left: 35mm, right: 25mm, top: 25mm, bottom: 25mm),
   footer: context {
     if here().page() >= 2 {
       align(right, counter(page).display("1"))
@@ -21,7 +21,7 @@
 })
 
 #set text(font: "Times New Roman", size: 12pt, lang: "hu", hyphenate: false)
-#set par(justify: true, first-line-indent: (amount: 1.5em, all: true))
+#set par(justify: true, first-line-indent: 1.5em, spacing: 0.6em)
 #set list(indent: 1.5em)
 
 #show heading.where(level: 1): set heading(numbering: none)
@@ -55,7 +55,7 @@
       align: center + top,
       box(align(left)[
         _Készítette:_
-        #pad(left: 1.5em, top: -0.5em)[
+        #pad(left: 1.5em)[
           *#context document.author.first()* \
           programtervező informatikus \
           BSc szakos hallgató
@@ -63,7 +63,7 @@
       ]),
       box(align(left)[
         _Témavezető:_
-        #pad(left: 1.5em, top: -0.5em)[
+        #pad(left: 1.5em)[
           *Dr. Siket István* \
           Szoftverfejlesztés Tanszék \
           adjunktus
@@ -140,7 +140,9 @@ Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése
 - *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül. A tárolt rekordokat beolvasáskor nem kell elemezni, deszerializálni, és új memóriaterületet sem kell foglalni számukra: a nyers bájtok közvetlenül Rust-struktúraként használhatók. Mivel mindkét könyvtár tisztán Rust nyelven íródott, az adatbázis statikusan a programmal együtt fordul, külön adatbázismotorra és más nyelvű függőségre nincs szükség.
 - *Szerveroldali megjelenítés:* Az oldalakat a szerveren állítom elő: a HTML-t a Rust nyelvben híres builder-mintára épülő generátorral hozom létre, a stílusokról pedig a Pico.css gondoskodik. A böngészőnek így kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre alig van szükség.
 
-A könyvtárak gyakorlati használhatóságát egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni. Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van. Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja, és alapot adjon a mérésekhez.
+#v(1em)
+
+#h(1.5em)A könyvtárak gyakorlati használhatóságát egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni. Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van. Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja, és alapot adjon a mérésekhez.
 
 A kitűzött célok teljesülését mérésekkel ellenőrzöm. Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az elkészült rendszerre irányulnak, és három kérdésre keresnek választ:
 
@@ -176,7 +178,6 @@ Tudomásul veszem, hogy szakdolgozatomat a Szegedi Tudományegyetem a Diplomamun
   #box(width: 40%)[
     #align(center)[
       #line(length: 100%, stroke: (thickness: 0.5pt, dash: "dotted"))
-      #v(-0.5em)
       *hallgató aláírása*
     ]
   ]
