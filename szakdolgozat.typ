@@ -172,9 +172,14 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 == A dolgozat felépítése
 
-A dolgozatban először a felhasznált eszközöket és módszereket tekintem át: a Rust nyelv tulajdonságait, az aszinkron programozási modellt, a HTTP protokollt és a felhasznált könyvtárakat.
-Ezt követően a saját munkámat mutatom be rétegenként: sorra veszem a HTTP-szervert és az adatbázisréteget, majd a rájuk épülő bemutató alkalmazást, benne a szerveroldali megjelenítéssel.
-A dolgozatot a mérések leírása és kiértékelése, végül az eredmények összefoglalása zárja.
+#par(first-line-indent: 0em)[A dolgozat a következő fejezetekből áll:]
+
+- *Felhasznált technológiák:* Áttekintem a munka elméleti és eszközbeli alapjait: a Rust nyelv tulajdonságait, az aszinkron programozási modellt, a HTTP/1.1 protokollt, a beágyazott adattárolást és zero-copy szerializációt, valamint a felhasznált könyvtárakat.
+- *A HTTP-szerver:* Bemutatom a nulláról írt szervert: a kérések beolvasását és feldolgozását, a védelmi korlátokat és időkorlátokat, a válasz kiírását, valamint a hibakezelési elveket.
+- *Az adatbázisréteg:* Ismertetem a redb és az rkyv együttes használatát, a tárolt adatok modelljét és a programozói felületet.
+- *A bemutató alkalmazás:* Leírom az EPUB-kereső és -letöltő oldalt: a funkciókat, a felépítést, a szerveroldali megjelenítést, valamint az alkalmazás üzemeltetését.
+- *Mérések és kiértékelés:* Bemutatom a méréseket és eredményeiket a futtatható állomány méretéről, a teljesítményről és a memóriahasználatról, valamint a kulcsfontosságú tervezési döntések hatásáról.
+- *Összefoglalás:* Értékelem az elért eredményeket és a rendszer korlátait, és felvázolom a továbbfejlesztési lehetőségeket.
 
 #pagebreak()
 
