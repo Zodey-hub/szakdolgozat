@@ -147,19 +147,19 @@ A dolgozat ezért nem a meglévő keretrendszerek leváltására tesz kísérlet
 
 Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése és megvalósítása, amelynek minden tervezési döntését két szempont vezérli: a nagy futási teljesítmény és a lefordított program minimális mérete.
 
-#par(first-line-indent: 0em)[A munkám három fő területet ölel fel:]
+#par(first-line-indent: 0em)[A munkám két fő területet ölel fel:]
 
 - *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezetre építve.
   Külső könyvtárat csak a kérések elemzéséhez (httparse) és a protokoll alapvető típusainak leírásához (http) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
 - *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
   A tárolt rekordokat beolvasáskor nem kell elemezni, deszerializálni, és új memóriaterületet sem kell foglalni számukra: a nyers bájtok közvetlenül Rust-struktúraként használhatók.
   Mivel mindkét könyvtár tisztán Rust nyelven íródott, az adatbázis statikusan a programmal együtt fordul, külön adatbázismotorra és más nyelvű függőségre nincs szükség.
-- *Szerveroldali megjelenítés:* Az oldalakat a szerveren állítom elő: a HTML-t a Rust nyelvben híres builder-mintára épülő generátorral hozom létre, a stílusokról pedig a Pico.css gondoskodik.
-  A böngészőnek így kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre alig van szükség.
 
 #h(1.5em)
 
-A könyvtárak gyakorlati használhatóságát egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni.
+Mindkét könyvtár önálló, bármilyen projektben használható.
+A gyakorlati használhatóságukat egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni.
+Az oldalakat az alkalmazás a szerveren állítja elő: a HTML-t a Rust nyelvben elterjedt builder-mintára épülő generátor hozza létre, a stílusokról pedig a Pico.css gondoskodik, így a böngészőnek kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre alig van szükség.
 Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van.
 Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja, és alapot adjon a mérésekhez.
 
@@ -172,11 +172,289 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 == A dolgozat felépítése
 
-#todo[a fejezetek végleges sorrendjéhez igazítani]
-
-A dolgozatban először a felhasznált eszközöket és módszereket tekintem át: a Rust nyelv tulajdonságait, az aszinkron programozási modellt, valamint a felhasznált könyvtárakat.
-Ezt követően a saját munkámat mutatom be: sorra veszem a keretrendszer rétegeit -- a HTTP-szervert, az adatbázisréteget és a HTML-generálást --, majd a rájuk épülő bemutató alkalmazást.
+A dolgozatban először a felhasznált eszközöket és módszereket tekintem át: a Rust nyelv tulajdonságait, az aszinkron programozási modellt, a HTTP protokollt és a felhasznált könyvtárakat.
+Ezt követően a saját munkámat mutatom be rétegenként: sorra veszem a HTTP-szervert és az adatbázisréteget, majd a rájuk épülő bemutató alkalmazást, benne a szerveroldali megjelenítéssel.
 A dolgozatot a mérések leírása és kiértékelése, végül az eredmények összefoglalása zárja.
+
+#pagebreak()
+
+// ---------- Felhasznált technológiák ----------
+
+= Felhasznált technológiák
+
+== A Rust nyelv tulajdonságai
+
+=== Memóriakezelés és biztonság
+
+#todo[tulajdonjog és kölcsönzés (borrow checker), memóriabiztonság fordítási időben, nincs szemétgyűjtő és futásidejű környezet]
+
+=== Absztrakciók és kódméret
+
+#todo[zero-cost abstraction és monomorfizáció (ennek ára: a kódméret)]
+
+=== Hibakezelés
+
+#todo[a `Result` alapú hibakezelés és a `panic`]
+
+=== Cargo és a crate-ek ökoszisztémája
+
+#todo[a Cargo, a crate-ek, a release profil lehetőségei (LTO, `panic=abort`, `codegen-units`)]
+
+== Aszinkron programozás Rustban
+
+=== Blokkoló és aszinkron modell
+
+#todo[a blokkoló, szálanként kapcsolatot kezelő modell és az aszinkron modell összehasonlítása]
+
+=== Future és async/await
+
+#todo[`Future`, `async`/`await`, az állapotgép, amivé a fordító alakítja]
+
+=== Futtatókörnyezet és reaktor
+
+#todo[az executor és a reaktor feladata; az operációs rendszer eseményfigyelője (epoll)]
+
+=== A smol
+
+#todo[a smol felépítése és miért kicsi (async-executor, async-io, async-net); egyszálú és többszálú végrehajtás]
+
+== A HTTP/1.1 protokoll
+
+#todo[a kérés és a válasz felépítése; a TCP bájtfolyam és a keretezés (fejléc vége, `Content-Length`, `Transfer-Encoding`); a tartós kapcsolat (keep-alive) és a pipelining; a request smuggling lényege; a http és a httparse könyvtár szerepe]
+
+== Beágyazott adattárolás
+
+=== Beágyazott adatbázisok és a redb
+
+#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író)]
+
+=== Zero-copy szerializáció és az rkyv
+
+#todo[a zero-copy szerializáció fogalma és az rkyv (archivált típusok, validálás)]
+
+=== Miért nem SQLite
+
+#todo[FFI, C függőség, a fordítás és a méret]
+
+== További felhasznált eszközök
+
+#todo[a bytes könyvtár (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta); a Pico.css; a mérésekhez használt eszközök (wrk, kuva)]
+
+#pagebreak()
+
+// ---------- A HTTP-szerver ----------
+
+= A HTTP-szerver
+
+== Követelmények és tervezési szempontok
+
+#todo[a szerver önálló, alkalmazásfüggetlen könyvtár, bármilyen projektben használható; mit tud és mit nem (nincs TLS, routing, middleware, streamelés); a kezelőfüggvény felülete (`Handler`, `http::Request<Body>` és `Response<Body>`); a kapcsolat élete: egy task kapcsolatonként]
+
+== A kérés beolvasása
+
+=== A TCP bájtfolyam és a három olvasási lépés
+
+#todo[a bájtfolyam, nincs "kérés vége" jel; olvasás a fejléc végéig, a törzs hosszának meghatározása, a törzs beolvasása]
+
+=== Pufferelés
+
+#todo[kapcsolatonkénti puffer, pipelining, a `scratch` terület és a `Box<[u8]>`/`Vec<u8>` választás]
+
+=== A fejléc elemzése és a zero-copy
+
+#todo[a `split_to` és a `freeze`, ablakok a `Bytes`-ra; a kétszeri elemzés indoklása, a `Parts` kerülőút]
+
+== A törzs hossza, korlátok és védelmek
+
+=== A törzs hosszának meghatározása
+
+#todo[`content_length` szabályai (táblázat)]
+
+=== Védelmek
+
+#todo[smuggling elleni védelem, nincs előzetes memóriafoglalás (slowloris)]
+
+=== Korlátok
+
+#todo[korlátok (fejléc, fejlécek száma, törzs) és indoklásuk]
+
+== Időkorlátok és kapcsolatkezelés
+
+=== Két időkorlát
+
+#todo[tétlenségi (5 s) és kérésolvasási (30 s) időkorlát, a `wait_for_request`, keep-alive]
+
+=== Kapcsolatok száma
+
+#todo[kapcsolatszám-korlát hiánya és következménye]
+
+== A válasz kiírása
+
+#todo[válaszpuffer, `Vec<u8>`; a törzs másolása és a vectored write kérdése (a mérés eredményével)]
+
+== Hibakezelési elvek
+
+#todo[`unwrap` és `?` az invariánsokra, panic hatása a kapcsolatra, nincs `debug_assert`]
+
+#pagebreak()
+
+// ---------- Az adatbázisréteg ----------
+
+= Az adatbázisréteg
+
+== Követelmények
+
+#todo[az adatbázisréteg önálló, alkalmazásfüggetlen könyvtár, bármilyen projektben használható; milyen általános igényeket szolgál ki; tervezési szempontok (méret, sebesség, zero-copy)]
+
+== A redb és az rkyv együtt
+
+=== Írás
+
+#todo[hogyan kerül az rkyv által archivált típus a redb-be]
+
+=== Olvasás deszerializálás nélkül
+
+#todo[az olvasás útvonala beolvasás-deszerializálás nélkül, igazítás (alignment)]
+
+=== Validálás és `unsafe`
+
+#todo[a validálás költsége és szerepe, az `unsafe` kérdése]
+
+== A tárolt adatok modellje
+
+=== Táblák, kulcsok és rekordok
+
+#todo[táblák és kulcsok, tetszőleges rkyv-vel archiválható rekordtípus tárolása]
+
+=== Indexek és keresés
+
+#todo[másodlagos indexek és keresés támogatása]
+
+== A programozói felület
+
+=== Az API felépítése
+
+#todo[tranzakciók, olvasás, írás]
+
+=== Hibakezelés és használat
+
+#todo[hibakezelés, használati példa]
+
+#pagebreak()
+
+// ---------- A bemutató alkalmazás ----------
+
+= A bemutató alkalmazás
+
+== Az alkalmazás célja és funkciói
+
+#todo[publikus EPUB-kereső és -letöltő oldal; milyen oldalak és útvonalak vannak; ez az egyetlen rész, amely az EPUB formátumhoz kötődik, a szerver és az adatbázisréteg ettől függetlenül működik]
+
+== Az EPUB formátum
+
+#todo[felépítése (ZIP, OPF, metaadatok, borító), mit nyerünk ki belőle]
+
+== Bélyegképek
+
+#todo[az EPUB-ban megadható bélyegkép (borítókép) kinyerése és megjelenítése; nincs futásidejű képfeldolgozás, így az image könyvtár sem szükséges; mi történik, ha nincs megadva bélyegkép]
+
+== Felépítés és megvalósítás
+
+=== A rétegek összekapcsolása
+
+#todo[útvonalválasztás, a kezelőfüggvények, az adatbázis és a renderelés kapcsolata]
+
+=== Könyvek betöltése és indexelése
+
+#todo[könyvek betöltése, metaadatok kinyerése, indexelés]
+
+=== Keresés és letöltés
+
+#todo[a keresés működése; a letöltés kiszolgálása]
+
+== A felhasználói felület
+
+=== Szerveroldali renderelés
+
+#todo[miért szerveroldalon; kliensoldali JavaScript minimalizálása]
+
+=== A HTML-generátor
+
+#todo[builder minta, a build_html használata, a biztonság (kimenet escape-elése, XSS)]
+
+=== Stílus
+
+#todo[Pico.css (méret, osztály nélküli stílus)]
+
+== Telepítés és üzemeltetés
+
+#todo[fordítás (release profil), futtatás, konfiguráció]
+
+#pagebreak()
+
+// ---------- Mérések ----------
+
+= Mérések és kiértékelés
+
+== A mérések módja
+
+#todo[mérőkörnyezet, eszközök (wrk), a mérések korlátai]
+
+== A futtatható állomány mérete
+
+=== A fordítási beállítások hatása a méretre
+
+#todo[az egyes beállítások halmozott hatása a méretre]
+
+=== A méret és a sebesség viszonya
+
+#todo[a méretre optimalizált változatok sebessége]
+
+== Teljesítmény
+
+=== Áteresztőképesség és késleltetés
+
+#todo[a kapcsolatok számának hatása]
+
+=== Nagy törzsek
+
+#todo[nagy válaszok és kérések kiszolgálása]
+
+== Memóriahasználat
+
+=== Alapterhelés és terhelés alatt
+
+#todo[indításkor, terhelés alatt]
+
+=== Kapcsolatonkénti költség
+
+#todo[tétlen kapcsolatok, nagy válaszok pufferei]
+
+#pagebreak()
+
+// ---------- Összefoglalás ----------
+
+= Összefoglalás
+
+== Elért eredmények
+
+#todo[a kitűzött célok teljesülése a mérések alapján]
+
+== Korlátok
+
+#todo[egyszálú szerver, nincs TLS, nincs streamelés, nincs kapcsolatszám-korlát]
+
+== Továbbfejlesztési lehetőségek
+
+#todo[többszálúság, streamelés, HTTP/2, ...]
+
+#pagebreak()
+
+// ---------- Irodalomjegyzék ----------
+
+= Irodalomjegyzék
+
+#todo[a hivatkozott források (Rust könyv, a használt könyvtárak dokumentációja, RFC 9110/9112, wrk, ...)]
 
 #pagebreak()
 
