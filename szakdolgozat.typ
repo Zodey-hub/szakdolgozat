@@ -7,7 +7,7 @@
 
 #set page(
   paper: "a4",
-  margin: (left: 35mm, right: 25mm, top: 25mm, bottom: 25mm),
+  margin: 25mm,
   footer: context {
     if here().page() >= 2 {
       align(right, counter(page).display("1"))
