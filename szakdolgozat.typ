@@ -417,7 +417,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 = Irodalomjegyzék
 
-#todo[a hivatkozott források (Rust könyv, a használt könyvtárak dokumentációja, RFC 9110/9112, RFC 6266/5987, az EPUB 3 specifikáció, wrk, ...)]
+#bibliography("refs.yml", title: none, full: true)
 
 #pagebreak()
 

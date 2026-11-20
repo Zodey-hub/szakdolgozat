@@ -1,0 +1,25 @@
+rust-book:
+  type: Book
+  title: The Rust Programming Language
+  author: ["Klabnik, Steve", "Nichols, Carol", "Krycho, Chris"]
+  url:
+    value: https://doc.rust-lang.org/book/
+    date: 2026-11-20
+
+redb:
+  type: Repository
+  title: "redb: Rust Embedded DataBase"
+  author: "Berner, Christopher"
+  version: 5.0.0
+  url:
+    value: https://github.com/cberner/redb
+    date: 2026-11-20
+
+rkyv:
+  type: Repository
+  title: "rkyv: Zero-copy deserialization framework for Rust"
+  author: "Koloski, David"
+  version: 0.8.18
+  url:
+    value: https://github.com/rkyv/rkyv
+    date: 2026-11-20
