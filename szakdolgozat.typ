@@ -184,6 +184,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 #pagebreak()
 
 // ---------- Felhasznált technológiák ----------
+// terjedelem: kb. 7 oldal
 
 = Felhasznált technológiák
 
@@ -193,17 +194,13 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 #todo[tulajdonjog és kölcsönzés (borrow checker), memóriabiztonság fordítási időben, nincs szemétgyűjtő és futásidejű környezet]
 
-=== Absztrakciók és kódméret
+=== Absztrakciók és hibakezelés
 
-#todo[zero-cost abstraction és monomorfizáció (ennek ára: a kódméret)]
+#todo[zero-cost abstraction és monomorfizáció (ennek ára: a kódméret); traitek és generikus API-k, amelyekre a könyvtárak épülnek (`Handler`, `Record`); a `Result`, a `?` operátor és a `panic`; könyvtárban saját hibatípus (thiserror), alkalmazásban anyhow]
 
-=== Hibakezelés
+=== Cargo és a fordítási profilok
 
-#todo[a `Result` alapú hibakezelés és a `panic`]
-
-=== Cargo és a crate-ek ökoszisztémája
-
-#todo[a Cargo, a crate-ek, a release profil lehetőségei (LTO, `panic=abort`, `codegen-units`)]
+#todo[a Cargo, a crate-ek és a crates.io (mindkét könyvtár ott publikált); a feature-ök egyesítése (később: az rkyv `unaligned`); a release profil lehetőségei (`opt-level`, LTO, `codegen-units`, `panic=abort`, `strip`)]
 
 == Aszinkron programozás Rustban
 
@@ -211,233 +208,192 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 #todo[a blokkoló, szálanként kapcsolatot kezelő modell és az aszinkron modell összehasonlítása]
 
-=== Future és async/await
+=== Future, executor és reaktor
 
-#todo[`Future`, `async`/`await`, az állapotgép, amivé a fordító alakítja]
+#todo[`Future`, `async`/`await`, az állapotgép, amivé a fordító alakítja; az executor és a reaktor feladata; az operációs rendszer eseményfigyelője (epoll)]
 
-=== Futtatókörnyezet és reaktor
+=== A smol és építőelemei
 
-#todo[az executor és a reaktor feladata; az operációs rendszer eseményfigyelője (epoll)]
-
-=== A smol
-
-#todo[a smol felépítése és miért kicsi (async-executor, async-io, async-net); egyszálú és többszálú végrehajtás]
+#todo[a smol kis, önálló crate-ekből áll (async-executor, async-io, async-net, futures-lite, async-channel), és ezek közvetlenül is használhatók, így csak az kerül a programba, ami kell; egy executor több szálon (a szálak ugyanabból a sorból veszik a taskokat)]
 
 == A HTTP/1.1 protokoll
 
-#todo[a kérés és a válasz felépítése; a TCP bájtfolyam és a keretezés (fejléc vége, `Content-Length`, `Transfer-Encoding`); a tartós kapcsolat (keep-alive) és a pipelining; a request smuggling lényege; a http és a httparse könyvtár szerepe]
+=== Az üzenetek és a keretezés
+
+#todo[a kérés (kérősor, fejlécek, törzs) és a válasz felépítése, a `HEAD` metódus; a TCP-ben nincs „üzenet vége” jel: a fejléc végét az üres sor, a törzs hosszát a `Content-Length` vagy a `Transfer-Encoding: chunked` adja meg]
+
+=== Tartós kapcsolatok és request smuggling
+
+#todo[keep-alive és a `Connection` fejléc (HTTP/1.0 és 1.1 eltérő alapértelmezése), pipelining; ha két fél másképp határozza meg a kérés végét (két `Content-Length`, `Content-Length` és `Transfer-Encoding` együtt), a törzsből „új kérés” lesz]
 
 == Beágyazott adattárolás
 
 === Beágyazott adatbázisok és a redb
 
-#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író)]
+#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író és párhuzamos olvasók pillanatképpel; név szerinti táblák és multimap táblák); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
 
 === Zero-copy szerializáció és az rkyv
 
-#todo[a zero-copy szerializáció fogalma és az rkyv (archivált típusok, validálás)]
+#todo[a zero-copy szerializáció fogalma; az rkyv archivált típusai (relatív eltolások abszolút mutatók helyett, `ArchivedString`, `ArchivedVec`, fix bájtsorrendű egészek); validálás (bytecheck); igazítás és az `unaligned` feature]
 
-=== Miért nem SQLite
+== További felhasznált könyvtárak
 
-#todo[FFI, C függőség, a fordítás és a méret]
-
-== További felhasznált eszközök
-
-#todo[a bytes könyvtár (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta); a Pico.css; a mérésekhez használt eszközök (wrk, kuva)]
+#todo[a http (közös típusok I/O nélkül) és a httparse (allokáció nélküli fejlécelemző, `Complete`/`Partial`); a bytes (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta, saját fork az űrlapelemek miatt); az epub; a serde és a serde_json; a unicode-normalization]
 
 #pagebreak()
 
 // ---------- A HTTP-szerver ----------
+// terjedelem: kb. 7 oldal
 
 = A HTTP-szerver
 
-== Követelmények és tervezési szempontok
+== Hatókör és programozói felület
 
-#todo[a szerver önálló, alkalmazásfüggetlen könyvtár, bármilyen projektben használható; mit tud és mit nem (nincs TLS, routing, middleware, streamelés); a kezelőfüggvény felülete (`Handler`, `http::Request<Body>` és `Response<Body>`); a kapcsolat élete: egy task kapcsolatonként]
+#todo[a szerver önálló, alkalmazásfüggetlen könyvtár (tiny-http-server, crates.io); mit tud (HTTP/1.0 és 1.1, keep-alive, pipelining, `HEAD`) és mit nem (TLS, routing, middleware, streamelés, chunked törzs): ezeket a hívóra vagy egy reverse proxyra hagyja; a `Handler` trait és a lezárásokra adott általános implementáció; a törzs `Bytes`, a hiba is közönséges válasz; `Server::bind` és a `ServerBuilder` (`max_head_bytes`, `max_body_bytes`, `threads`); rövid példa a README alapján]
+
+== Szálak és kapcsolatok
+
+#todo[a hívó szál csak fogadja a kapcsolatokat, a `threads` darab munkaszál egy közös executoron szolgálja ki őket (`thread::scope`, leállító csatorna); kapcsolatonként egy task; `TCP_NODELAY` és indoklása; egy taskban keletkező panic csak az adott kapcsolatot zárja le]
 
 == A kérés beolvasása
 
-=== A TCP bájtfolyam és a három olvasási lépés
+=== A kérés határai és a pufferelés
 
-#todo[a bájtfolyam, nincs "kérés vége" jel; olvasás a fejléc végéig, a törzs hosszának meghatározása, a törzs beolvasása]
-
-=== Pufferelés
-
-#todo[kapcsolatonkénti puffer, pipelining, a `scratch` terület és a `Box<[u8]>`/`Vec<u8>` választás]
+#todo[nincs „kérés vége” jel, ezért olvasás közben kell elemezni: fejléc végéig, a törzs hossza, a törzs; a kapcsolatonkénti `BytesMut` túléli a kéréseket (pipelining); először ellenőriz, csak utána olvas; olvasás közvetlenül a puffer végére (`resize`, majd `truncate`)]
 
 === A fejléc elemzése és a zero-copy
 
-#todo[a `split_to` és a `freeze`, ablakok a `Bytes`-ra; a kétszeri elemzés indoklása, a `Parts` kerülőút]
+#todo[a `split_to` és a `freeze`, a `slice_ref` ablakok az URI-ra és a fejlécértékekre; a kétszeri elemzés indoklása (az első a változó pufferre mutat); a `Parts` csak egy `Request<()>`-en keresztül hozható létre]
 
-== A törzs hossza, korlátok és védelmek
+== Korlátok és védelmek
 
-=== A törzs hosszának meghatározása
-
-#todo[`content_length` szabályai (táblázat)]
-
-=== Védelmek
-
-#todo[smuggling elleni védelem, nincs előzetes memóriafoglalás (slowloris)]
-
-=== Korlátok
-
-#todo[korlátok (fejléc, fejlécek száma, törzs) és indoklásuk]
+#todo[a `content_length` szabályai (táblázat: `Transfer-Encoding` -> 501, nincs -> 0, több -> 400, nem szám -> 400, túl nagy -> 413) és a smuggling elleni védelem; nincs előzetes memóriafoglalás a `Content-Length` alapján (slowloris); a kezelő nem állíthat keretező fejlécet; a fejléc (16 KiB), a fejlécek száma (64) és a törzs (1 MiB) alapértéke, összevetve az nginx, az Apache és a Node.js értékeivel (táblázat)]
 
 == Időkorlátok és kapcsolatkezelés
 
-=== Két időkorlát
-
-#todo[tétlenségi (5 s) és kérésolvasási (30 s) időkorlát, a `wait_for_request`, keep-alive]
-
-=== Kapcsolatok száma
-
-#todo[kapcsolatszám-korlát hiánya és következménye]
+#todo[tétlenségi (5 s) és kérésolvasási (30 s) időkorlát, a `wait_for_request` választja el a kettőt (idővonal egy keep-alive kapcsolaton); a kapcsolatszám-korlát hiánya és következménye]
 
 == A válasz kiírása
 
-#todo[válaszpuffer, `Vec<u8>`; a törzs másolása és a vectored write kérdése (a mérés eredményével)]
+#todo[a `ResponseWriter` újrahasznosított `Vec<u8>` puffere; a státuszsort és a keretező fejléceket a szerver írja; `HEAD`: a kezelő `GET`-ként kapja, a törzs nem megy ki, a `Content-Length` igen]
 
 == Hibakezelési elvek
 
-#todo[`unwrap` és `?` az invariánsokra, panic hatása a kapcsolatra, nincs `debug_assert`]
+#todo[a belső `Error` és a státuszkódok leképezése, protokollhiba után státuszválasz, I/O hiba után csendes lezárás; `unwrap` + komment az invariánsokra, `?` ott, ahol a garancia nem helyi; nincs `debug_assert`]
 
 #pagebreak()
 
 // ---------- Az adatbázisréteg ----------
+// terjedelem: kb. 7 oldal
 
 = Az adatbázisréteg
 
-== Követelmények
+== Követelmények és tervezési szempontok
 
-#todo[az adatbázisréteg önálló, alkalmazásfüggetlen könyvtár, bármilyen projektben használható; milyen általános igényeket szolgál ki; tervezési szempontok (méret, sebesség, zero-copy)]
-
-== A redb és az rkyv együtt
-
-=== Írás
-
-#todo[hogyan kerül az rkyv által archivált típus a redb-be]
-
-=== Olvasás deszerializálás nélkül
-
-#todo[az olvasás útvonala beolvasás-deszerializálás nélkül, igazítás (alignment)]
-
-=== Validálás és `unsafe`
-
-#todo[a validálás költsége és szerepe, az `unsafe` kérdése]
+#todo[az adatbázisréteg önálló, alkalmazásfüggetlen könyvtár (tiny-database, crates.io); mit ad (típusos rekordok `u64` azonosítóval egy fájlban, másodlagos indexek egyenlőségre, tartományra és előtagra) és mit nem (lekérdezőnyelv, join, egyediségi megkötés); elv: a könyvtár kódja legyen egyszerű, a kényelmi réteget (pl. makró) a felhasználó megírhatja; a `Database` állapot nélküli, szálak között `Mutex` nélkül megosztható]
 
 == A tárolt adatok modellje
 
-=== Táblák, kulcsok és rekordok
+=== Rekordok és indexek
 
-#todo[táblák és kulcsok, tetszőleges rkyv-vel archiválható rekordtípus tárolása]
+#todo[a `Record` trait (`TABLE`, `Index`, `id`, `index_keys`) és a supertraitek; a típus a metódusokon van, nem a `Database`-en, így egy fájl több rekordtípust tárol; az `Index` trait: enum az indexnevek helyett, az elírás fordítási hiba, a `name()` adja a tárolt táblanevet; `NoIndex`; indexenként egy multimap tábla, példa táblákkal (`users`, `users.name`, `users.age`); többértékű mező és hiányzó érték]
 
-=== Indexek és keresés
+=== Rendezéstartó kulcskódolás
 
-#todo[másodlagos indexek és keresés támogatása]
+#todo[a `key::enc`: a redb bájtonként hasonlít, ezért a kódolásnak az értékek sorrendjét kell megőriznie; big-endian egészek, előjelbit-csere, lebegőpontos számok; sztringek: `00 01` lezáró és `00 FF` csere; tuple mint összetett kulcs; `prefix_range`; a kódolás a fájlformátum része]
 
-== A programozói felület
+== Írás és törlés
 
-=== Az API felépítése
+#todo[`insert` és `insert_many` egy tranzakcióban (egy commit = egy fájlszinkronizálás); csak a változott indexbejegyzések íródnak; a visszagörgetés a `commit` elmaradásából jön; a törlés a régi rekordot dekódolja, hogy tudja, mely indexbejegyzéseket kell törölni]
 
-#todo[tranzakciók, olvasás, írás]
+== Olvasás
 
-=== Hibakezelés és használat
+=== Lekérdezések
 
-#todo[hibakezelés, használati példa]
+#todo[`get`, `find`, `range`, `all`, valamint `contains` és `count`; a `find` egy egykulcsú tartomány; az indexbejárás menete (azonosítók gyűjtése, ismétlődés szűrése, sorok betöltése); egy olvasó tranzakció pillanatképe; `Vec` az iterátor helyett, mert az a tranzakciót kölcsönözné]
+
+=== Zero-copy olvasás és validálás
+
+#todo[a `view*` metódusok lezárásnak adják az archivált rekordot (a referencia nem élheti túl a tranzakciót); az `unaligned` feature-rel a redb lapjáról, másolás nélkül, és ennek ára; minden olvasás ellenőrzi a bájtokat, sérült sorból `Corrupt` hiba lesz memóriahiba helyett; nincs `unsafe`]
+
+== Sémaváltozás és hibakezelés
+
+#todo[`rebuild_indexes` az `index_keys` megváltozása után, `migrate::<Old, New>` a rekordtípus megváltozása után; a publikus `Error` (`#[non_exhaustive]`, `Corrupt`, `InvalidIndexName`); a még nem létező tábla nem hiba, hanem üres eredmény]
 
 #pagebreak()
 
 // ---------- A bemutató alkalmazás ----------
+// terjedelem: kb. 6 oldal
 
 = A bemutató alkalmazás
 
-== Az alkalmazás célja és funkciói
+== Az alkalmazás célja és felépítése
 
-#todo[publikus EPUB-kereső és -letöltő oldal; milyen oldalak és útvonalak vannak; ez az egyetlen rész, amely az EPUB formátumhoz kötődik, a szerver és az adatbázisréteg ettől függetlenül működik]
+#todo[a repub: publikus EPUB-kereső és -letöltő oldal; az útvonalak (táblázat); ez az egyetlen rész, amely az EPUB formátumhoz kötődik; a modulok és a kérés útja: a `Router` maga a szerver `Handler`-e; a `Reply` trait: `None` -> 404, hiba -> naplózás és 500, így minden hiba egy helyen végződik]
 
 == Az EPUB formátum
 
-#todo[felépítése (ZIP, OPF, metaadatok, borító), mit nyerünk ki belőle]
+#todo[felépítése (ZIP, OPF, Dublin Core metaadatok, finomítások: szerep és esemény, borítókép); mit nyerünk ki belőle]
 
-== Bélyegképek
+== A könyvtár indexelése
 
-#todo[az EPUB-ban megadható bélyegkép (borítókép) kinyerése és megjelenítése; nincs futásidejű képfeldolgozás, így az image könyvtár sem szükséges; mi történik, ha nincs megadva bélyegkép]
+#todo[a `Book` rekord és a metaadatok kinyerése (cím hiányában a fájlnév, az év, a leírás szövege); az azonosító a fájlnév FNV-1a hash-e 53 bitre vágva (stabil linkek, pontos JSON szám); az adatbázis minden induláskor újraépül; egy-egy `insert_many` a könyvekre és a borítókra; a szöveges mezők szavanként, normalizálva kerülnek az indexbe]
 
-== Felépítés és megvalósítás
+== Keresés
 
-=== A rétegek összekapcsolása
+#todo[a szövegek normalizálása (kisbetű, ékezetek elhagyása) indexeléskor és kereséskor ugyanúgy; szó eleji egyezés a `prefix_range`-dzsel; a jelöltek a legszelektívebb feltétel indexéből jönnek, a többi feltételt memóriában szűri]
 
-#todo[útvonalválasztás, a kezelőfüggvények, az adatbázis és a renderelés kapcsolata]
+== Borítóképek és letöltés
 
-=== Könyvek betöltése és indexelése
-
-#todo[könyvek betöltése, metaadatok kinyerése, indexelés]
-
-=== Keresés és letöltés
-
-#todo[a keresés működése; a letöltés kiszolgálása]
+#todo[a borító az EPUB-ból jön, nincs futásidejű képfeldolgozás; külön `Cover` tábla, hogy a listázás ne olvassa a képeket; engedélyezett képtípusok (SVG nem), `nosniff`; a letöltésnél a `view` csak a fájlnevet másolja ki a sorból; `Content-Disposition` (RFC 6266 és 5987)]
 
 == A felhasználói felület
 
-=== Szerveroldali renderelés
+#todo[szerveroldali renderelés JavaScript nélkül; a `Page` trait: a serde adja a JSON-t, a trait a HTML-t, az `Accept` fejléc dönt; a build_html builder mintája, minden EPUB-ból jövő szöveg escape-elve (XSS); saját, osztály nélküli stíluslap a programba fordítva, miért nem Pico.css vagy Simple.css]
 
-#todo[miért szerveroldalon; kliensoldali JavaScript minimalizálása]
+== Üzemeltetés
 
-=== A HTML-generátor
-
-#todo[builder minta, a build_html használata, a biztonság (kimenet escape-elése, XSS)]
-
-=== Stílus
-
-#todo[Pico.css (méret, osztály nélküli stílus)]
-
-== Telepítés és üzemeltetés
-
-#todo[fordítás (release profil), futtatás, konfiguráció]
+#todo[parancssori kapcsolók; naplózás fájlba és a standard kimenetre; az állapotoldal (`/health`); a release profil]
 
 #pagebreak()
 
 // ---------- Mérések ----------
+// terjedelem: kb. 5 oldal
 
 = Mérések és kiértékelés
 
 == A mérések módja
 
-#todo[mérőkörnyezet, eszközök (wrk), a mérések korlátai]
+#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
 
-== A futtatható állomány mérete
+== A HTTP-szerver
 
-=== A fordítási beállítások hatása a méretre
+=== A futtatható állomány mérete
 
-#todo[az egyes beállítások halmozott hatása a méretre]
-
-=== A méret és a sebesség viszonya
-
-#todo[a méretre optimalizált változatok sebessége]
-
-== Teljesítmény
+#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége]
 
 === Áteresztőképesség és késleltetés
 
-#todo[a kapcsolatok számának hatása]
+#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz]
 
-=== Nagy törzsek
+=== Memóriahasználat
 
-#todo[nagy válaszok és kérések kiszolgálása]
+#todo[indításkor, terhelés alatt és tétlen kapcsolatonként]
 
-== Memóriahasználat
+== Az adatbázisréteg
 
-=== Alapterhelés és terhelés alatt
+=== Írás
 
-#todo[indításkor, terhelés alatt]
+#todo[`insert` rekordonként és `insert_many` egy tranzakcióban (a commit, vagyis a fájlszinkronizálás költsége)]
 
-=== Kapcsolatonkénti költség
+=== Olvasás
 
-#todo[tétlen kapcsolatok, nagy válaszok pufferei]
+#todo[a zero-copy `view` és a teljes deszerializálás (`get`) összevetése kis és nagy rekordon; keresés indexszel (`find`, `range`) és a teljes tábla szűrésével (`all` + `filter`)]
 
 #pagebreak()
 
 // ---------- Összefoglalás ----------
+// terjedelem: kb. 1,5 oldal
 
 = Összefoglalás
 
@@ -447,11 +403,11 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 == Korlátok
 
-#todo[egyszálú szerver, nincs TLS, nincs streamelés, nincs kapcsolatszám-korlát]
+#todo[nincs TLS (reverse proxy mögé való), nincs streamelés (a letöltött fájl is egészben a memóriában), nincs chunked törzs, nincs kapcsolatszám-korlát; az adatbázis lekérdezései teljes listát adnak, lapozás nélkül; a keresés nem rangsorol]
 
 == Továbbfejlesztési lehetőségek
 
-#todo[többszálúság, streamelés, HTTP/2, ...]
+#todo[streamelt válasz nagy fájlokhoz, kapcsolatszám-korlát, HTTP/2, a `view` bejárás idő előtti megállítása, rangsoroló teljes szöveges keresés, ...]
 
 #pagebreak()
 
@@ -459,7 +415,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az el
 
 = Irodalomjegyzék
 
-#todo[a hivatkozott források (Rust könyv, a használt könyvtárak dokumentációja, RFC 9110/9112, wrk, ...)]
+#todo[a hivatkozott források (Rust könyv, a használt könyvtárak dokumentációja, RFC 9110/9112, RFC 6266/5987, az EPUB 3 specifikáció, wrk, ...)]
 
 #pagebreak()
 
