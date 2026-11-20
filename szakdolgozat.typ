@@ -92,23 +92,25 @@ A könyvtárak gyakorlati használhatóságát egy publikus EPUB-kereső és -le
 
 == A megoldási mód
 
-A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezetre építve.
+A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
 A kérések elemzését az httparse, a protokoll típusait a http könyvtár biztosítja.
 Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs–érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül, amelynek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
-A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást a Pico.css végzi, így kliensoldali JavaScriptre alig van szükség.
+A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást egy saját stíluslap végzi, így kliensoldali JavaScriptre pedig nincs is szükség.
 
 == Alkalmazott eszközök, módszerek
 
 - Programozási nyelv: Rust
-- Aszinkron futtatókörnyezet: smol
+- Aszinkron futtatókörnyezet: a smol építőelemei (async-executor, async-io, async-net)
 - HTTP-szerver: http, httparse
 - Adatbázis: redb, rkyv
-- Felhasználói felület: build_html, Pico.css
+- Felhasználói felület: build_html, saját stíluslap
+- EPUB-feldolgozás: epub
+- JSON-kimenet: serde
 - Verziókezelés: Git
 
 == Elért eredmények
 
-#todo[a mérési eredmények rövid összefoglalása: a futtatható állomány mérete, a bemutató alkalmazás válaszideje, áteresztőképessége és memóriahasználata, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
+#todo[a mérési eredmények rövid összefoglalása: a HTTP-szerver futtatható állományának mérete, áteresztőképessége, késleltetése és memóriahasználata, az adatbázisréteg írási és olvasási sebessége, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
 
 == Kulcsszavak
 
@@ -149,7 +151,7 @@ Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése
 
 #par(first-line-indent: 0em)[A munkám két fő területet ölel fel:]
 
-- *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezetre építve.
+- *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
   Külső könyvtárat csak a kérések elemzéséhez (httparse) és a protokoll alapvető típusainak leírásához (http) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
 - *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
   A tárolt rekordokat beolvasáskor nem kell elemezni, deszerializálni, és új memóriaterületet sem kell foglalni számukra: a nyers bájtok közvetlenül Rust-struktúraként használhatók.
@@ -159,15 +161,15 @@ Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése
 
 Mindkét könyvtár önálló, bármilyen projektben használható.
 A gyakorlati használhatóságukat egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni.
-Az oldalakat az alkalmazás a szerveren állítja elő: a HTML-t a Rust nyelvben elterjedt builder-mintára épülő generátor hozza létre, a stílusokról pedig a Pico.css gondoskodik, így a böngészőnek kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre alig van szükség.
+Az oldalakat az alkalmazás a szerveren állítja elő: a HTML-t a Rust nyelvben elterjedt builder-mintára épülő generátor hozza létre, a stílusokról pedig egy saját, a programba fordított stíluslap gondoskodik, így a böngészőnek kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre pedig nincs is szükség.
 Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van.
-Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja, és alapot adjon a mérésekhez.
+Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja.
 
 A kitűzött célok teljesülését mérésekkel ellenőrzöm.
-Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára az elkészült rendszerre irányulnak, és három kérdésre keresnek választ:
+Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a két elkészült könyvtárra irányulnak, és három kérdésre keresnek választ:
 
 - *Méret:* Mekkora a lefordított futtatható állomány, és az egyes tervezési és fordítási döntések mennyivel járulnak hozzá a méret csökkenéséhez.
-- *Teljesítmény:* Milyen válaszidővel, áteresztőképességgel és memóriahasználattal szolgálja ki a kéréseket a bemutató alkalmazás.
+- *Teljesítmény:* Milyen áteresztőképességgel, késleltetéssel és memóriahasználattal szolgálja ki a kéréseket a HTTP-szerver, és milyen gyorsan ír és olvas az adatbázisréteg.
 - *A tervezési döntések hatása:* Mennyit számítanak a gyakorlatban a keretrendszer kulcsfontosságú megoldásai, például a zero-copy olvasás a hagyományos deszerializáláshoz képest.
 
 == A dolgozat felépítése
