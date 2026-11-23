@@ -384,7 +384,30 @@ A puffer így minden pillanatban kizárólag az érvényes, megérkezett bájtok
 
 === A fejléc elemzése és a zero-copy
 
-#todo[a `split_to` és a `freeze`, a `slice_ref` ablakok az URI-ra és a fejlécértékekre; a kétszeri elemzés indoklása (az első a változó pufferre mutat)]
+A fejléc mezőinek a `http` könyvtár típusaiba történő átültetésekor mutatkozik meg igazán a zero-copy megközelítés előnye.
+A `slice_ref` metódus a `Bytes` belsejébe mutató bájtszeletből egy újabb, csak arra a tartományra korlátozódó `Bytes` nézetet hoz létre, amely ugyanarra a memóriaterületre mutat, csupán a referenciaszámlálót növeli meg.
+Az URI-t és az összes fejlécértéket ilyen részszeletekből építem fel (`from_maybe_shared`), tehát ezek sem önálló másolatok, hanem a beolvasott fejléc egy-egy szakaszai.
+A HTTP-metódusok és a szabványos fejlécnevek esetében a `http` könyvtár előre definiált konstansokat használ, így új memóriafoglalásra legfeljebb az egyedi fejlécneveknél kerülhet sor.
+Ennek a megoldásnak az ára, hogy amíg a kérés bármelyik része – például egy elmentett fejlécérték – életben marad, addig a mögötte álló eredeti memóriaterület sem szabadul fel.
+
+#figure(
+  ```rust
+  // read_request: a fejléc leválasztása és elemzése
+  let head = self.buffer.split_to(head_len).freeze();
+  let parts = parse_head(&head)?;
+
+  // build_parts: az URI és a fejlécértékek nézetek a head-re
+  *request.uri_mut() = Uri::from_maybe_shared(head.slice_ref(path.as_bytes()))?;
+  let value = HeaderValue::from_maybe_shared(head.slice_ref(header.value))?;
+  ```,
+  caption: [A fejléc leválasztása és a zero-copy részszeletek],
+) <lst:fejlec>
+
+Mindezek miatt a `httparse` elemző kétszer fut le ugyanazon a fejlécen.
+Az első futás az előző alfejezetben leírt módon a még módosítható `BytesMut` pufferen ellenőrzi, hogy teljes-e már a fejléc, és mekkora a hossza.
+Mivel maga a `httparse` sem másol, az eredményében kapott metódus, útvonal és fejlécértékek mind olyan szeletek, amelyek közvetlenül az elemzett pufferbe mutatnak.
+Ezeket azonban nem lehet megtartani: a későbbi `split_to` hívás módosítja a puffert, amit a borrow checker megakadályoz, ráadásul a `slice_ref` is kifejezetten a végleges `Bytes` példányba mutató szeletet vár.
+A második elemzés ezért már a leválasztott és befagyasztott fejlécen fut le, az így kapott szeletekből pedig már gond nélkül kialakíthatók a referenciaszámlált `Bytes` példányok.
 
 == Korlátok és védelmek
 
