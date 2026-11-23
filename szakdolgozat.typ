@@ -527,7 +527,21 @@ Ennek a kényelemnek az ára, hogy a kezelő a `HEAD` kéréseknél is előáll�
 
 == Hibakezelési elvek
 
-#todo[a belső `Error` és a státuszkódok leképezése, protokollhiba után státuszválasz, I/O hiba után csendes lezárás; `unwrap` + komment az invariánsokra, `?` ott, ahol a garancia nem helyi]
+A kapcsolat kiszolgálása közben felmerülő hibákat egy belső `Error` enum írja le, amely nem része a könyvtár publikus felületének.
+Az ilyen hibák sosem jutnak el a szerver hívójáig: kivétel nélkül az adott kapcsolat lezárásával végződnek, miközben a többi párhuzamos kapcsolatot egyáltalán nem érintik.
+A hívó oldal kizárólag az új kapcsolatok fogadásakor fellépő hibákat kapja meg a `run` metódus visszatérési értékeként, míg az alkalmazás szintű hibák kezeléséről – ahogy a programozói felületnél már láttuk – maga a kezelő dönt.
+
+A belső hibák két fő csoportra oszlanak, amelyeket egyetlen metódus (`client_status`) választ szét azáltal, hogy minden hibaváltozathoz vagy hozzárendel egy HTTP-státuszkódot, vagy üres értéket ad vissza:
+
+- Protokollhibák: A kliens hibás formátumú vagy a méretkorlátokat túllépő kérést küldött, maga a hálózati kapcsolat azonban még él. Ilyenkor a szerver egy törzs nélküli státuszválaszt küld, hogy a kliens értesüljön az elutasítás okáról. A hibaüzenet elküldése után a szerver lezárja a kapcsolatot, hiszen egy hibásan keretezett kérés után már nem állapítható meg biztosan, hol kezdődik a következő.
+- Átviteli hibák: Ha a hálózati művelet hiúsul meg, vagy a kliens a kérés közben bontja a kapcsolatot, már nincs kinek választ küldeni, így a szerver csendben lezárja a kapcsolatot.
+
+A belső implementáció során azt is tudatosan el kellett döntenem, hogyan kezelem azokat az állapotokat, amelyek a program helyes működése mellett elvileg sosem fordulhatnak elő.
+Ahol ezt a helyi logika vagy egy külső könyvtár dokumentált garanciája biztosítja, `unwrap` hívást alkalmazok, közvetlenül mellette egy rövid megjegyzésben rögzítve az indoklást.
+Ilyen például a memóriában lévő `Vec` pufferbe történő írás, amely nem hiúsulhat meg, vagy a `httparse` sikeres elemzése, amely garantáltan kitölti a metódust, az útvonalat és a verziót.
+Ezzel szemben ahol a feltétel teljesülése egy másik függvény viselkedésén múlik – és egy későbbi módosítás észrevétlenül elronthatja –, ott a `?` operátorral továbbadom a hibát.
+Így kezelem például a fejléc második elemzését is: ez elvileg nem vallhat kudarcot, hiszen a hívó pontosan az első elemzés által kimért bájtokat vágta le, ám ha egy jövőbeli változtatás miatt mégis sérülne ez a feltétel, a kliens szabályos `400`-as hibaválaszt kap.
+A `?` operátor mindenhol történő, gépies használatát azért kerültem, mert olyan elérhetetlen hibaágakat hozna létre, amelyeket egyetlen teszt sem tudna lefedni, ráadásul egy valódi programhibát is ártalmatlannak tűnő kliensoldali hibaválaszként rejtene el – szemben az `unwrap` hívással, amely azonnal és egyértelműen jelzi, ha a program valamelyik belső invariánsa sérült.
 
 #pagebreak()
 
