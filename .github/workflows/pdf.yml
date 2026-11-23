@@ -25,12 +25,23 @@ jobs:
           echo "db56595ec6ef5d3de5c24994f001f03b2a13e37cee27bc25c58f6f43e8f807ab  times32.exe" | sha256sum -c -
           7z e -y -ofonts times32.exe '*.TTF'
 
+      - name: JetBrains Mono letöltése
+        run: |
+          curl -sSfL --retry 3 -o jetbrains-mono.zip https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+          echo "6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf  jetbrains-mono.zip" | sha256sum -c -
+          unzip -q -j -o jetbrains-mono.zip 'fonts/ttf/JetBrainsMono-*.ttf' -d fonts
+
       - uses: typst-community/setup-typst@v4
         with:
           typst-version: "0.15.1"
 
       - name: PDF fordítása
-        run: typst compile --font-path fonts szakdolgozat.typ szakdolgozat.pdf
+        run: |
+          typst compile --font-path fonts szakdolgozat.typ szakdolgozat.pdf 2>&1 | tee typst.log
+          if grep -q "unknown font family" typst.log; then
+            echo "Hiányzó betűtípus!"
+            exit 1
+          fi
 
       - name: Release frissítése
         env:

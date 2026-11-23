@@ -36,9 +36,11 @@
 #show figure.where(kind: raw): set figure(supplement: [Kódrészlet]) // a Typst magyar fordításából hiányzik a kódrészlet szava, ezért angolul „Listing” lenne
 
 #show bibliography: set text(size: 10pt)
+#show raw: set text(font: "JetBrains Mono")
 #show raw.where(block: true): set text(size: 9pt)
 #show raw.where(block: true): set align(left)
 #show raw.where(block: true): block.with(width: 100%, inset: 1em, stroke: 0.5pt + gray)
+#show raw.where(block: false): box
 
 #set table(stroke: (_, y) => if y == 0 { (bottom: 0.5pt) }, align: left)
 #show table: box.with(stroke: (y: 1pt))
