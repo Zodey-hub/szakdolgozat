@@ -64,3 +64,40 @@ rfc9112:
   url:
     value: https://www.rfc-editor.org/rfc/rfc9112
     date: 2026-11-23
+
+http:
+  type: Repository
+  title: "http: A set of types for representing HTTP requests and responses"
+  author: ["Crichton, Alex", "Lerche, Carl", "McArthur, Sean"]
+  version: 1.5.0
+  url:
+    value: https://github.com/hyperium/http
+    date: 2026-11-23
+
+bytes:
+  type: Repository
+  title: "bytes: Types and traits for working with bytes"
+  author: ["Lerche, Carl", "McArthur, Sean"]
+  version: 1.12.2
+  url:
+    value: https://github.com/tokio-rs/bytes
+    date: 2026-11-23
+
+httparse:
+  type: Repository
+  title: "httparse: A tiny, safe, speedy, zero-copy HTTP/1.x parser"
+  author: "McArthur, Sean"
+  version: 1.10.1
+  url:
+    value: https://github.com/seanmonstar/httparse
+    date: 2026-11-23
+
+tiny-database:
+  type: Repository
+  title: "tiny-database: A small and simple embedded database"
+  author:
+    name: "Bálint Máté"
+  version: 2.0.0
+  url:
+    value: https://crates.io/crates/tiny-database/2.0.0
+    date: 2026-11-23

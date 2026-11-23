@@ -277,7 +277,7 @@ Emellett a szerver nem támogatja a darabolt (chunked) adatátvitelt és a törz
 
 A szerver és az alkalmazás közötti hidat a `Handler` trait jelenti (@lst:handler. kódrészlet).
 Ennek egyetlen metódusa egy `Request`-ből aszinkron módon állít elő egy `Response`-t.
-Mindkét típus a szabványos `http` könyvtárból származik, így a szerver nem saját adatstruktúrákat kényszerít a fejlesztőre, hanem a Rust-ökoszisztémában megszokott típusokra épít.
+Mindkét típus a szabványos `http` könyvtárból (@http) származik, így a szerver nem saját adatstruktúrákat kényszerít a fejlesztőre, hanem a Rust-ökoszisztémában megszokott típusokra épít.
 A traiten szereplő `Send + Sync + 'static` megkötésre azért van szükség, mert a kezelő egyetlen példányát a szerver összes munkaszála párhuzamosan használja.
 Mivel a traithez tartozik egy általános implementáció minden olyan függvényre és lezárásra (closure), amely kérést fogad és egy válaszra váró `Future`-t ad vissza, egy egyszerűbb alkalmazáshoz elég egyetlen `async fn` megadása.
 Ha viszont a kezelőnek belső állapotra – például egy adatbázis-kapcsolatra – is szüksége van, akkor a traitet egy saját struktúrán kell megvalósítani, ahogyan azt a bemutató alkalmazás `Router` típusa is teszi.
@@ -292,7 +292,7 @@ Ha viszont a kezelőnek belső állapotra – például egy adatbázis-kapcsolat
   caption: [A `Handler` trait],
 ) <lst:handler>
 
-A kérés és a válasz törzsét a `Body` típus reprezentálja, amely a `bytes` könyvtár `Bytes` típusának álneve (type alias).
+A kérés és a válasz törzsét a `Body` típus reprezentálja, amely a `bytes` könyvtár (@bytes) `Bytes` típusának álneve (type alias).
 Mivel ez egy referenciaszámlált bájtszelet, a kérés törzse másolás nélkül (zero-copy) vágható ki a szerver olvasási pufferéből, a válasz törzseként pedig akár a binárisba fordított statikus adatok – például egy stíluslap – is közvetlenül átadhatók.
 A kezelő metódusa `Result` helyett egyszerű `Response`-t ad vissza: a szerver nem kényszerít ki saját hibatípust, így az alkalmazásra bízza, hogyan kezeli a hibákat, és milyen HTTP-választ küld róluk.
 
@@ -356,7 +356,7 @@ A TCP-kapcsolat egy folyamatos bájtfolyam, amelyben nincs beépített „kéré
 Egy-egy hálózati olvasás pontosan annyi bájtot ad vissza, amennyi addig megérkezett: emiatt egyetlen HTTP-kérés több olvasási műveletre is széteshet, de az is előfordulhat, hogy egy olvasás már a következő kérés elejét is magával hozza (@fig:olvasasok. ábra).
 A kérések határait ezért kizárólag a tartalmuk alapján lehet megállapítani (@rfc9112): a fejléc végét egy üres sor (`\r\n\r\n`) jelzi, a törzs pontos hosszát pedig a `Content-Length` fejléc adja meg.
 Ebből adódóan a szerver az olvasással párhuzamosan végzi az elemzést, és három egymást követő szakaszban halad: először addig olvas, amíg a teljes fejléc össze nem áll, ezután meghatározza belőle a törzs méretét, végül addig folytatja az olvasást, amíg a törzs összes bájtja meg nem érkezik.
-A fejléc teljességét a `httparse` könyvtár ellenőrzi, amely a puffer aktuális tartalmára vagy a teljes fejléc hosszát adja vissza, vagy jelzi, hogy még hiányoznak adatok.
+A fejléc teljességét a `httparse` könyvtár (@httparse) ellenőrzi, amely a puffer aktuális tartalmára vagy a teljes fejléc hosszát adja vissza, vagy jelzi, hogy még hiányoznak adatok.
 
 #figure(
   ```
