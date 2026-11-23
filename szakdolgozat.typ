@@ -23,11 +23,24 @@
 #set text(font: "Times New Roman", size: 12pt, lang: "hu", hyphenate: false)
 #set par(justify: true, first-line-indent: 1.5em, spacing: 0.6em)
 #set list(indent: 1.5em)
+#set figure(numbering: n => numbering("1.1", counter(heading).get().first() - 3, n)) // -3 a Tartalmi összefoglaló, a Tartalomjegyzék és a Bevezetés miatt
+#set ref(supplement: none)
 
 #show heading.where(level: 1): set heading(numbering: none)
 #show heading.where(level: 1): it => counter(heading).step() + it
 #show heading.where(level: 1): set block(below: 1em)
 #show heading.where(level: 1): set align(center)
+#show heading.where(level: 1): it => (raw, table, image).map(k => counter(figure.where(kind: k)).update(0)).join() + it
+
+#show figure.where(kind: raw): set figure(supplement: [Kódrészlet]) // a Typst magyar fordításából hiányzik a kódrészlet szava, ezért angolul „Listing” lenne
+
+#show raw.where(block: true): set text(size: 9pt)
+#show raw.where(block: true): set align(left)
+#show raw.where(block: true): block.with(width: 100%, inset: 1em, stroke: 0.5pt + gray)
+
+#set table(stroke: (_, y) => if y == 0 { (bottom: 0.5pt) }, align: left)
+#show table: box.with(stroke: (y: 1pt))
+#show table.cell.where(y: 0): set text(weight: "bold")
 
 #let todo(body) = text(fill: red)[\[TODO: #body\]]
 
