@@ -411,7 +411,41 @@ A második elemzés ezért már a leválasztott és befagyasztott fejlécen fut 
 
 == Korlátok és védelmek
 
-#todo[a `content_length` szabályai (táblázat: `Transfer-Encoding` -> 501, nincs -> 0, több -> 400, nem szám -> 400, túl nagy -> 413) és a smuggling elleni védelem; nincs előzetes memóriafoglalás a `Content-Length` alapján (slowloris); a kezelő nem állíthat keretező fejlécet; a fejléc (16 KiB), a fejlécek száma (64) és a törzs (1 MiB) alapértéke, összevetve az nginx, az Apache és a Node.js értékeivel (táblázat)]
+A szerver semmit nem feltételez a kliens megbízhatóságáról: a beérkező kérésben szereplő minden adat csupán egy ellenőrizetlen állítás, amelyet hitelesíteni kell, mielőtt a program erőforrást szánna rá.
+A legkényesebb ilyen paraméter a törzs hossza, hiszen ettől függ, hol ér véget az aktuális kérés, és hol kezdődik a következő.
+Ezt az értéket a `content_length` függvény határozza meg a @tbl:hossz. táblázatban látható szabályok alapján, szigorúan a felsorolás sorrendjében haladva.
+
+#figure(
+  table(
+    columns: 2,
+    table.header[Feltétel][Eredmény],
+    [van `Transfer-Encoding` fejléc], [`501 Not Implemented`],
+    [nincs `Content-Length` fejléc], [nincs törzs (a hossz 0)],
+    [több `Content-Length` fejléc van], [`400 Bad Request`],
+    [az érték nem szám], [`400 Bad Request`],
+    [az érték nagyobb a `max_body_bytes` korlátnál], [`413 Payload Too Large`],
+    [egyébként], [a törzs hossza az érték],
+  ),
+  caption: [A törzs hosszának meghatározása],
+) <tbl:hossz>
+
+Ezen szabályok hátterében a HTTP request smuggling támadások elleni védekezés áll.
+Ha egy kérés kétértelműen értelmezhető, és két fél – például egy fordított proxy és a mögötte álló alkalmazásszerver – eltérő helyen látja a végét, akkor a törzs lemaradó részéből az egyik fél szemében egy új, ellenőrizetlen kérés születhet.
+A kétértelmű helyzetekben a szerver ezért sosem próbál találgatni, hanem azonnal elutasítja a kérést: több `Content-Length` fejléc esetén `400 Bad Request` válasszal tér vissza.
+A darabolt (chunked) átvitelt a könyvtár nem támogatja, de a `Transfer-Encoding` fejlécet mégsem hagyhatja egyszerűen figyelmen kívül – hiszen akkor hibásan határozná meg a kérés végét –, ezért ilyenkor `501 Not Implemented` hibát küld.
+A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, így a túl nagy méretet bejelentő kérés azonnal `413 Payload Too Large` választ kap, és a szerver egyetlen bájtot sem vár meg a törzsből.
+
+A bejelentett hosszt a memóriafoglalás során sem veszem készpénznek.
+Bár kézenfekvő volna a beolvasás előtt egyszerre lefoglalni a teljes `Content-Length` méretű területet, ezt szándékosan elkerülöm.
+Egy támadó ugyanis bejelenthetne egy éppen a korlát alatti törzset, majd küldés nélkül várakozna, amivel néhány bájtnyi fejléc segítségével kapcsolatonként a teljes törzskorlátnak megfelelő memóriát köthetné le az időkorlát lejártáig.
+Sok párhuzamos kapcsolaton keresztül ez már kis hálózati forgalommal is kimerítheti a szerver memóriáját, ami a Slowloris típusú támadások egy változata.
+Előzetes foglalás nélkül a puffer csak a ténylegesen megérkezett bájtok arányában növekszik, így a szerver legfeljebb annyi memóriát használ fel, amennyi adatot a kliens valóban elküldött.
+Ennek az ára, hogy egy nagyobb törzs beolvasása közben a puffert többször is újra kell foglalni.
+
+A védelem a válaszok összeállításakor is érvényesül.
+Az üzenet keretezését meghatározó fejléceket (`Content-Length`, `Transfer-Encoding`), valamint a `Connection` fejlécet a kezelő nem bírálhatja felül: ha ezek szerepelnek a visszaadott válaszban, a szerver a hálózatra írás előtt eltávolítja őket.
+A `Content-Length` értékét mindig a válasz törzsének tényleges hosszából, a `Connection` fejlécet pedig a kapcsolat megtartásáról hozott saját döntéséből generálja.
+Így kizárható, hogy a kezelő más méretet jelentsen be, mint amennyit a szerver valójában elküld, és a kliens emiatt rossz helyen vágja el a választ.
 
 == Időkorlátok és kapcsolatkezelés
 
