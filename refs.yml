@@ -53,3 +53,14 @@ rfc9293:
   url:
     value: https://www.rfc-editor.org/rfc/rfc9293
     date: 2026-11-23
+
+rfc9112:
+  type: Report
+  title: "HTTP/1.1"
+  author: ["Fielding, Roy T.", "Nottingham, Mark", "Reschke, Julian"]
+  date: 2022-06
+  serial-number: RFC 9112
+  publisher: RFC Editor
+  url:
+    value: https://www.rfc-editor.org/rfc/rfc9112
+    date: 2026-11-23

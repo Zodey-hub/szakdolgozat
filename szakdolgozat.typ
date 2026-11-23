@@ -352,7 +352,35 @@ Ha az opció beállítása valamiért mégsem sikerül, a kapcsolat ettől még 
 
 === A kérés határai és a pufferelés
 
-#todo[nincs „kérés vége” jel, ezért olvasás közben kell elemezni: fejléc végéig, a törzs hossza, a törzs; a kapcsolatonkénti `BytesMut` túléli a kéréseket (pipelining); először ellenőriz, csak utána olvas; olvasás közvetlenül a puffer végére (`resize`, majd `truncate`)]
+A TCP-kapcsolat egy folyamatos bájtfolyam, amelyben nincs beépített „kérés vége” jelölés.
+Egy-egy hálózati olvasás pontosan annyi bájtot ad vissza, amennyi addig megérkezett: emiatt egyetlen HTTP-kérés több olvasási műveletre is széteshet, de az is előfordulhat, hogy egy olvasás már a következő kérés elejét is magával hozza (@fig:olvasasok. ábra).
+A kérések határait ezért kizárólag a tartalmuk alapján lehet megállapítani (@rfc9112): a fejléc végét egy üres sor (`\r\n\r\n`) jelzi, a törzs pontos hosszát pedig a `Content-Length` fejléc adja meg.
+Ebből adódóan a szerver az olvasással párhuzamosan végzi az elemzést, és három egymást követő szakaszban halad: először addig olvas, amíg a teljes fejléc össze nem áll, ezután meghatározza belőle a törzs méretét, végül addig folytatja az olvasást, amíg a törzs összes bájtja meg nem érkezik.
+A fejléc teljességét a `httparse` könyvtár ellenőrzi, amely a puffer aktuális tartalmára vagy a teljes fejléc hosszát adja vissza, vagy jelzi, hogy még hiányoznak adatok.
+
+#figure(
+  ```
+  1. olvasás:  POST /a HTTP/1.1\r\nHost: x\r\nCont
+  2. olvasás:  ent-Length: 5\r\n\r\nhel
+  3. olvasás:  loGET /b HTTP/1.1\r\n...
+  ```,
+  kind: image,
+  caption: [Egy kérés három olvasásra szétesve, a harmadikban már a következő kérés eleje],
+) <fig:olvasasok>
+
+A beérkezett, de még fel nem dolgozott bájtokat kapcsolatonként egyetlen `BytesMut` puffer tárolja, amely nemcsak egyetlen kérésig, hanem a kapcsolat teljes élettartamáig él.
+Amikor egy kérés feldolgozása befejeződik, a szerver leválasztja a fejlécet és a törzset a puffer elejéről, a fennmaradó rész – a következő kérés már megérkezett darabja – pedig érintetlenül benne marad.
+Ennek köszönhetően a pipelining minden külön logika nélkül, természetes módon működik: a következő kérés beolvasása pontosan ott folytatódik, ahol az előző véget ért.
+
+Ennek azonban szigorú feltétele, hogy a szerver minden lépésben először a pufferben már meglévő adatokat vizsgálja meg, és csak akkor olvasson újra a hálózatról, ha azok nem elegendőek.
+Ha ugyanis az előző kérés egy teljes újabb kérést hagyott maga után a pufferben, egy felesleges hálózati olvasás olyan adatra várna, amelyet a kliens már rég elküldött – így a kapcsolat a tétlenségi időkorlát lejártával tévesen bezárulna.
+Ugyanez az ellenőrzési sorrend teszi lehetővé a kapcsolat tiszta lezárásának felismerését is: ha a kliens bontja a kapcsolatot (EOF), és a puffer üres, akkor két kérés között, szabályosan lépett ki; ha viszont maradt még feldolgozatlan adat a pufferben, akkor egy kérés közepén szakadt meg a kapcsolat, ami hibának számít.
+
+Az új adatok beolvasása közvetlenül a puffer végére történik.
+Mivel az `AsyncRead` csak inicializált memóriaterületbe enged írni, a puffert előbb 8 KiB-tal megnövelem – az új területet nullákkal feltöltve –, majd ebbe a szakaszba olvasok a kapcsolatból, végül pedig visszavágom a ténylegesen megérkezett bájtok végéig.
+A 8 KiB csupán egyetlen olvasási művelet felső határa, maga a kérés mérete ennél jóval nagyobb is lehet.
+Ennek a megoldásnak az ára a memóriaterület nullázása olvasásonként, cserébe viszont nincs szükség külön átmeneti pufferre és felesleges adatmozgatásra, és teljes egészében elkerülhető az `unsafe` kód használata.
+A puffer így minden pillanatban kizárólag az érvényes, megérkezett bájtokat tartalmazza, amelyekből a fejléc és a törzs később másolás nélkül vágható ki.
 
 === A fejléc elemzése és a zero-copy
 
