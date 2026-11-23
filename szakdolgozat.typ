@@ -510,7 +510,20 @@ Közvetlenül a nyilvános internetre kitett szerver esetén azonban egy globál
 
 == A válasz kiírása
 
-#todo[a `ResponseWriter` újrahasznosított `Vec<u8>` puffere; a státuszsort és a keretező fejléceket a szerver írja; `HEAD`: a kezelő `GET`-ként kapja, a törzs nem megy ki, a `Content-Length` igen]
+A válaszok hálózatra írásáról a kérések olvasójának párja, a kapcsolatonként egy példányban létező `ResponseWriter` gondoskodik.
+A kimenet egy `Vec<u8>` pufferben áll össze, amely a bejövő pufferhez hasonlóan a kapcsolat teljes élettartamáig él.
+Minden új válasz összeállítása előtt kiürítem, ami lenullázza a tárolt adatok hosszát, de megőrzi a már lefoglalt kapacitást – így egy keep-alive kapcsolaton az első válasz után jellemzően már nincs szükség újabb memóriafoglalásra.
+Az összeállítás elején a puffert egyszerre bővítem a várható méretre (a törzs hosszára, valamint a státuszsor és a fejlécek becsült keretére), elkerülve ezzel a többszöri újrafoglalást írás közben.
+
+A kimeneti bájtfolyamba sorban bekerül a státuszsor, a kezelő által visszaadott fejlécek, a szerver által generált `Content-Length` és `Connection` mezők, az elválasztó üres sor, végül pedig maga a törzs, és a teljes üzenet egyetlen írási művelettel jut ki a hálózatra.
+A törzs bemásolása a pufferbe tudatos tervezési kompromisszum.
+Bár elkerülhető lenne vektoros írással, amely a fejlécet és a törzset két külön memóriaszeletként adja át az operációs rendszernek, a használt aszinkron könyvtár ehhez nem nyújt kész támogatást, a részleges írások kezelését pedig saját logikával kellene pótolni.
+Ezt a többletbonyolultságot nem tartottam arányosnak a várható nyereséggel, így az egyszerűbb utat választottam – aminek ára, hogy a törzs egyszer lemásolódik, a puffer lefoglalt kapacitása pedig a kapcsolat végéig akkora marad, amekkorát a legnagyobb addigi válasz megkövetelt.
+
+A `HEAD` kérésekre a szervernek pontosan ugyanazt a fejlécet kell küldenie, mint a megfelelő `GET` kérésre.
+Ennek biztosításához a kezelő meghívása előtt a kérés metódusát `GET`-re cserélem, a válasz kiírásakor pedig egyszerűen elhagyom a törzset, miközben a `Content-Length` fejlécben meghagyom annak valódi hosszát.
+Így az alkalmazásnak egyáltalán nem kell külön foglalkoznia a `HEAD` metódussal, és garantált, hogy a két válasz fejléce sosem tér el egymástól.
+Ennek a kényelemnek az ára, hogy a kezelő a `HEAD` kéréseknél is előállítja a teljes törzset, amelyet a szerver végül nem küld el.
 
 == Hibakezelési elvek
 
