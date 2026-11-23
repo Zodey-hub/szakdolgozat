@@ -109,7 +109,7 @@ A könyvtárak gyakorlati használhatóságát egy publikus EPUB-kereső és -le
 
 A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
 A kérések elemzését az httparse, a protokoll típusait a http könyvtár biztosítja.
-Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs–érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül, amelynek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
+Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül, amelynek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
 A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást egy saját stíluslap végzi, így kliensoldali JavaScriptre pedig nincs is szükség.
 
 == Alkalmazott eszközök, módszerek
@@ -280,7 +280,7 @@ Ennek egyetlen metódusa egy `Request`-ből aszinkron módon állít elő egy `R
 Mindkét típus a szabványos `http` könyvtárból (@http) származik, így a szerver nem saját adatstruktúrákat kényszerít a fejlesztőre, hanem a Rust-ökoszisztémában megszokott típusokra épít.
 A traiten szereplő `Send + Sync + 'static` megkötésre azért van szükség, mert a kezelő egyetlen példányát a szerver összes munkaszála párhuzamosan használja.
 Mivel a traithez tartozik egy általános implementáció minden olyan függvényre és lezárásra (closure), amely kérést fogad és egy válaszra váró `Future`-t ad vissza, egy egyszerűbb alkalmazáshoz elég egyetlen `async fn` megadása.
-Ha viszont a kezelőnek belső állapotra – például egy adatbázis-kapcsolatra – is szüksége van, akkor a traitet egy saját struktúrán kell megvalósítani, ahogyan azt a bemutató alkalmazás `Router` típusa is teszi.
+Ha viszont a kezelőnek belső állapotra -- például egy adatbázis-kapcsolatra -- is szüksége van, akkor a traitet egy saját struktúrán kell megvalósítani, ahogyan azt a bemutató alkalmazás `Router` típusa is teszi.
 
 #figure(
   ```rust
@@ -293,7 +293,7 @@ Ha viszont a kezelőnek belső állapotra – például egy adatbázis-kapcsolat
 ) <lst:handler>
 
 A kérés és a válasz törzsét a `Body` típus reprezentálja, amely a `bytes` könyvtár (@bytes) `Bytes` típusának álneve (type alias).
-Mivel ez egy referenciaszámlált bájtszelet, a kérés törzse másolás nélkül (zero-copy) vágható ki a szerver olvasási pufferéből, a válasz törzseként pedig akár a binárisba fordított statikus adatok – például egy stíluslap – is közvetlenül átadhatók.
+Mivel ez egy referenciaszámlált bájtszelet, a kérés törzse másolás nélkül (zero-copy) vágható ki a szerver olvasási pufferéből, a válasz törzseként pedig akár a binárisba fordított statikus adatok -- például egy stíluslap -- is közvetlenül átadhatók.
 A kezelő metódusa `Result` helyett egyszerű `Response`-t ad vissza: a szerver nem kényszerít ki saját hibatípust, így az alkalmazásra bízza, hogyan kezeli a hibákat, és milyen HTTP-választ küld róluk.
 
 A szerver kétféleképpen indítható el: a `Server::bind` az alapértelmezett paraméterekkel köti a szervert a megadott címhez, míg a `ServerBuilder` segítségével ezek a beállítások indítás előtt testreszabhatók, így a hívónak csak az eltéréseket kell megadnia.
@@ -302,8 +302,8 @@ A működés három fő paraméterrel szabályozható:
 - `max_body_bytes`: a kérés törzsének méretkorlátja (alapértelmezés szerint 1 MiB),
 - `threads`: a kapcsolatokat kiszolgáló munkaszálak száma (alapértelmezés szerint a processzormagok számával egyezik meg).
 
-A szálak számát a típusrendszer a `NonZeroUsize` típussal védi, így nulla szálas szerver már fordítási időben sem hozható létre, ami feleslegessé teszi a futásidejű ellenőrzést.
-Maga a `run` metódus sikeres működés esetén végtelen ciklusban fut, és kizárólag hiba esetén tér vissza – ezt fejezi ki az `io::Result<Infallible>` visszatérési típus is.
+A szálak számát `NonZeroUsize` típusú érték adja meg, így a nulla szálszám a típus szintjén ki van zárva: az értéket a hívó állítja elő, a szervernek pedig már nem kell ellenőriznie.
+Maga a `run` metódus sikeres működés esetén végtelen ciklusban fut, és kizárólag hiba esetén tér vissza -- ezt fejezi ki az `io::Result<Infallible>` visszatérési típus is.
 
 A @lst:pelda. kódrészlet egy teljes példán mutatja be a használatot: itt a kezelő egyetlen `async fn`, amely maga végzi az útvonalválasztást, a szerver pedig négy munkaszálon, 64 MiB-os törzskorláttal indul el.
 
@@ -345,7 +345,7 @@ Az olvasó és író adatfolyamok a task saját, lokális változói, így a sze
 
 Az újonnan elfogadott kapcsolatokon bekapcsolom a `TCP_NODELAY` opciót, amivel letiltom a Nagle-algoritmust (@rfc9293).
 Ez az algoritmus visszatartaná a kisebb adatcsomagokat mindaddig, amíg a korábban elküldött adatokra meg nem érkezik a nyugta, hogy több apró írást egyetlen szegmensbe vonjon össze.
-Mivel azonban a szerver minden választ egyetlen pufferben állít össze, és egy lépésben ír ki a hálózatra, nincs mit összevonni – a várakozás csak felesleges késleltetést okozna.
+Mivel azonban a szerver minden választ egyetlen pufferben állít össze, és egy lépésben ír ki a hálózatra, nincs mit összevonni -- a várakozás csak felesleges késleltetést okozna.
 Ha az opció beállítása valamiért mégsem sikerül, a kapcsolat ettől még működőképes marad, ezért ezt a hibát figyelmen kívül hagyom.
 
 == A kérés beolvasása
@@ -369,15 +369,15 @@ A fejléc teljességét a `httparse` könyvtár (@httparse) ellenőrzi, amely a 
 ) <fig:olvasasok>
 
 A beérkezett, de még fel nem dolgozott bájtokat kapcsolatonként egyetlen `BytesMut` puffer tárolja, amely nemcsak egyetlen kérésig, hanem a kapcsolat teljes élettartamáig él.
-Amikor egy kérés feldolgozása befejeződik, a szerver leválasztja a fejlécet és a törzset a puffer elejéről, a fennmaradó rész – a következő kérés már megérkezett darabja – pedig érintetlenül benne marad.
+Amikor egy kérés feldolgozása befejeződik, a szerver leválasztja a fejlécet és a törzset a puffer elejéről, a fennmaradó rész -- a következő kérés már megérkezett darabja -- pedig érintetlenül benne marad.
 Ennek köszönhetően a pipelining minden külön logika nélkül, természetes módon működik: a következő kérés beolvasása pontosan ott folytatódik, ahol az előző véget ért.
 
 Ennek azonban szigorú feltétele, hogy a szerver minden lépésben először a pufferben már meglévő adatokat vizsgálja meg, és csak akkor olvasson újra a hálózatról, ha azok nem elegendőek.
-Ha ugyanis az előző kérés egy teljes újabb kérést hagyott maga után a pufferben, egy felesleges hálózati olvasás olyan adatra várna, amelyet a kliens már rég elküldött – így a kapcsolat a tétlenségi időkorlát lejártával tévesen bezárulna.
+Ha ugyanis az előző kérés egy teljes újabb kérést hagyott maga után a pufferben, egy felesleges hálózati olvasás olyan adatra várna, amelyet a kliens már rég elküldött -- így a kapcsolat a tétlenségi időkorlát lejártával tévesen bezárulna.
 Ugyanez az ellenőrzési sorrend teszi lehetővé a kapcsolat tiszta lezárásának felismerését is: ha a kliens bontja a kapcsolatot (EOF), és a puffer üres, akkor két kérés között, szabályosan lépett ki; ha viszont maradt még feldolgozatlan adat a pufferben, akkor egy kérés közepén szakadt meg a kapcsolat, ami hibának számít.
 
 Az új adatok beolvasása közvetlenül a puffer végére történik.
-Mivel az `AsyncRead` csak inicializált memóriaterületbe enged írni, a puffert előbb 8 KiB-tal megnövelem – az új területet nullákkal feltöltve –, majd ebbe a szakaszba olvasok a kapcsolatból, végül pedig visszavágom a ténylegesen megérkezett bájtok végéig.
+Mivel az `AsyncRead` csak inicializált memóriaterületbe enged írni, a puffert előbb 8 KiB-tal megnövelem -- az új területet nullákkal feltöltve --, majd ebbe a szakaszba olvasok a kapcsolatból, végül pedig visszavágom a ténylegesen megérkezett bájtok végéig.
 A 8 KiB csupán egyetlen olvasási művelet felső határa, maga a kérés mérete ennél jóval nagyobb is lehet.
 Ennek a megoldásnak az ára a memóriaterület nullázása olvasásonként, cserébe viszont nincs szükség külön átmeneti pufferre és felesleges adatmozgatásra, és teljes egészében elkerülhető az `unsafe` kód használata.
 A puffer így minden pillanatban kizárólag az érvényes, megérkezett bájtokat tartalmazza, amelyekből a fejléc és a törzs később másolás nélkül vágható ki.
@@ -388,7 +388,7 @@ A fejléc mezőinek a `http` könyvtár típusaiba történő átültetésekor m
 A `slice_ref` metódus a `Bytes` belsejébe mutató bájtszeletből egy újabb, csak arra a tartományra korlátozódó `Bytes` nézetet hoz létre, amely ugyanarra a memóriaterületre mutat, csupán a referenciaszámlálót növeli meg.
 Az URI-t és az összes fejlécértéket ilyen részszeletekből építem fel (`from_maybe_shared`), tehát ezek sem önálló másolatok, hanem a beolvasott fejléc egy-egy szakaszai.
 A HTTP-metódusok és a szabványos fejlécnevek esetében a `http` könyvtár előre definiált konstansokat használ, így új memóriafoglalásra legfeljebb az egyedi fejlécneveknél kerülhet sor.
-Ennek a megoldásnak az ára, hogy amíg a kérés bármelyik része – például egy elmentett fejlécérték – életben marad, addig a mögötte álló eredeti memóriaterület sem szabadul fel.
+Ennek a megoldásnak az ára, hogy amíg a kérés bármelyik része -- például egy elmentett fejlécérték -- életben marad, addig a mögötte álló eredeti memóriaterület sem szabadul fel.
 
 #figure(
   ```rust
@@ -430,9 +430,9 @@ Ezt az értéket a `content_length` függvény határozza meg a @tbl:hossz. táb
 ) <tbl:hossz>
 
 Ezen szabályok hátterében a HTTP request smuggling támadások elleni védekezés áll.
-Ha egy kérés kétértelműen értelmezhető, és két fél – például egy fordított proxy és a mögötte álló alkalmazásszerver – eltérő helyen látja a végét, akkor a törzs lemaradó részéből az egyik fél szemében egy új, ellenőrizetlen kérés születhet.
+Ha egy kérés kétértelműen értelmezhető, és két fél -- például egy fordított proxy és a mögötte álló alkalmazásszerver -- eltérő helyen látja a végét, akkor a törzs lemaradó részéből az egyik fél szemében egy új, ellenőrizetlen kérés születhet.
 A kétértelmű helyzetekben a szerver ezért sosem próbál találgatni, hanem azonnal elutasítja a kérést: több `Content-Length` fejléc esetén `400 Bad Request` válasszal tér vissza.
-A darabolt (chunked) átvitelt a könyvtár nem támogatja, de a `Transfer-Encoding` fejlécet mégsem hagyhatja egyszerűen figyelmen kívül – hiszen akkor hibásan határozná meg a kérés végét –, ezért ilyenkor `501 Not Implemented` hibát küld.
+A darabolt (chunked) átvitelt a könyvtár nem támogatja, de a `Transfer-Encoding` fejlécet mégsem hagyhatja egyszerűen figyelmen kívül -- hiszen akkor hibásan határozná meg a kérés végét --, ezért ilyenkor `501 Not Implemented` hibát küld.
 A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, így a túl nagy méretet bejelentő kérés azonnal `413 Payload Too Large` választ kap, és a szerver egyetlen bájtot sem vár meg a törzsből.
 
 A bejelentett hosszt a memóriafoglalás során sem veszem készpénznek.
@@ -456,12 +456,12 @@ A könyvtár két publikus konstansként definiált időkorlátot használ:
 - A kapcsolati időkorlát (`CONNECTION_TIMEOUT`, 30 s) a már megkezdett kérés teljes beolvasására vonatkozik, és ugyanekkora időkeret áll rendelkezésre a válasz kiírására is.
 
 A két állapotot a `wait_for_request` metódus választja el egymástól.
-Ez megvárja a következő kérés első bájtjának megérkezését – vagy pipelining esetén azonnal visszatér, ha a pufferben már van feldolgozatlan adat –, és ténylegesen csak ezután indul el a kérés beolvasása.
+Ez megvárja a következő kérés első bájtjának megérkezését -- vagy pipelining esetén azonnal visszatér, ha a pufferben már van feldolgozatlan adat --, és ténylegesen csak ezután indul el a kérés beolvasása.
 Tétlen várakozás két helyzetben fordul elő: közvetlenül a kapcsolat felépülése után (mivel a modern böngészők gyakran előre nyitnak tartalék kapcsolatokat, amelyeket később nem feltétlenül használnak fel), valamint keep-alive működésnél két egymást követő kérés között.
 Egy néma kapcsolat csak feleslegesen foglalja az erőforrásokat, ezért erre elég egy rövid türelmi idő.
 
 Ha viszont a kliens már megkezdte a küldést, akkor aktívan dolgozik, és egy lassabb hálózati kapcsolaton egy nagyobb törzs feltöltéséhez több időre is szüksége lehet.
-Mivel a 30 másodperces korlát a kérés egészére vonatkozik – nem pedig az egyes olvasási műveletekre –, egy bájtonként csepegtető kliens sem tarthatja nyitva a kapcsolatot ennél tovább egyetlen kérés ürügyén.
+Mivel a 30 másodperces korlát a kérés egészére vonatkozik -- nem pedig az egyes olvasási műveletekre --, egy bájtonként csepegtető kliens sem tarthatja nyitva a kapcsolatot ennél tovább egyetlen kérés ürügyén.
 Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsolat tetszőleges ideig életben maradhat, amíg két kérés között nem telik el 5 másodpercnél hosszabb szünet (@fig:idovonal. ábra).
 
 #figure(
@@ -505,20 +505,20 @@ Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsola
 
 Fontos ugyanakkor látni, hogy az idő- és méretkorlátok kizárólag kapcsolatonként érvényesek; az egyidejűleg nyitott kapcsolatok számát a szerver nem korlátozza, hanem minden elfogadott kapcsolathoz feltétel nélkül elindít egy új taskot.
 Legrosszabb esetben a memóriaigény így a párhuzamos kapcsolatok számának és a kapcsolatonkénti fejléc- és törzskorlát összegének szorzata, amelynek nincs felső határa.
-Belső hálózaton vagy egy fordított proxy mögött – amely a titkosítás mellett a kapcsolatok számát is korlátozhatja – ez kevésbé kritikus.
+Belső hálózaton vagy egy fordított proxy mögött -- amely a titkosítás mellett a kapcsolatok számát is korlátozhatja -- ez kevésbé kritikus.
 Közvetlenül a nyilvános internetre kitett szerver esetén azonban egy globális kapcsolatszám-korlát többet érne bármelyik meglévő paraméter finomhangolásánál, így ez a könyvtár egyik legfontosabb továbbfejlesztési iránya.
 
 == A válasz kiírása
 
 A válaszok hálózatra írásáról a kérések olvasójának párja, a kapcsolatonként egy példányban létező `ResponseWriter` gondoskodik.
 A kimenet egy `Vec<u8>` pufferben áll össze, amely a bejövő pufferhez hasonlóan a kapcsolat teljes élettartamáig él.
-Minden új válasz összeállítása előtt kiürítem, ami lenullázza a tárolt adatok hosszát, de megőrzi a már lefoglalt kapacitást – így egy keep-alive kapcsolaton az első válasz után jellemzően már nincs szükség újabb memóriafoglalásra.
+Minden új válasz összeállítása előtt kiürítem, ami lenullázza a tárolt adatok hosszát, de megőrzi a már lefoglalt kapacitást -- így egy keep-alive kapcsolaton az első válasz után jellemzően már nincs szükség újabb memóriafoglalásra.
 Az összeállítás elején a puffert egyszerre bővítem a várható méretre (a törzs hosszára, valamint a státuszsor és a fejlécek becsült keretére), elkerülve ezzel a többszöri újrafoglalást írás közben.
 
 A kimeneti bájtfolyamba sorban bekerül a státuszsor, a kezelő által visszaadott fejlécek, a szerver által generált `Content-Length` és `Connection` mezők, az elválasztó üres sor, végül pedig maga a törzs, és a teljes üzenet egyetlen írási művelettel jut ki a hálózatra.
 A törzs bemásolása a pufferbe tudatos tervezési kompromisszum.
 Bár elkerülhető lenne vektoros írással, amely a fejlécet és a törzset két külön memóriaszeletként adja át az operációs rendszernek, a használt aszinkron könyvtár ehhez nem nyújt kész támogatást, a részleges írások kezelését pedig saját logikával kellene pótolni.
-Ezt a többletbonyolultságot nem tartottam arányosnak a várható nyereséggel, így az egyszerűbb utat választottam – aminek ára, hogy a törzs egyszer lemásolódik, a puffer lefoglalt kapacitása pedig a kapcsolat végéig akkora marad, amekkorát a legnagyobb addigi válasz megkövetelt.
+Ezt a többletbonyolultságot nem tartottam arányosnak a várható nyereséggel, így az egyszerűbb utat választottam -- aminek ára, hogy a törzs egyszer lemásolódik, a puffer lefoglalt kapacitása pedig a kapcsolat végéig akkora marad, amekkorát a legnagyobb addigi válasz megkövetelt.
 
 A `HEAD` kérésekre a szervernek pontosan ugyanazt a fejlécet kell küldenie, mint a megfelelő `GET` kérésre.
 Ennek biztosításához a kezelő meghívása előtt a kérés metódusát `GET`-re cserélem, a válasz kiírásakor pedig egyszerűen elhagyom a törzset, miközben a `Content-Length` fejlécben meghagyom annak valódi hosszát.
@@ -529,19 +529,21 @@ Ennek a kényelemnek az ára, hogy a kezelő a `HEAD` kéréseknél is előáll�
 
 A kapcsolat kiszolgálása közben felmerülő hibákat egy belső `Error` enum írja le, amely nem része a könyvtár publikus felületének.
 Az ilyen hibák sosem jutnak el a szerver hívójáig: kivétel nélkül az adott kapcsolat lezárásával végződnek, miközben a többi párhuzamos kapcsolatot egyáltalán nem érintik.
-A hívó oldal kizárólag az új kapcsolatok fogadásakor fellépő hibákat kapja meg a `run` metódus visszatérési értékeként, míg az alkalmazás szintű hibák kezeléséről – ahogy a programozói felületnél már láttuk – maga a kezelő dönt.
+A hívó oldal kizárólag az új kapcsolatok fogadásakor fellépő hibákat kapja meg a `run` metódus visszatérési értékeként, míg az alkalmazás szintű hibák kezeléséről -- ahogy a programozói felületnél már láttuk -- maga a kezelő dönt.
 
 A belső hibák két fő csoportra oszlanak, amelyeket egyetlen metódus (`client_status`) választ szét azáltal, hogy minden hibaváltozathoz vagy hozzárendel egy HTTP-státuszkódot, vagy üres értéket ad vissza:
 
-- Protokollhibák: A kliens hibás formátumú vagy a méretkorlátokat túllépő kérést küldött, maga a hálózati kapcsolat azonban még él. Ilyenkor a szerver egy törzs nélküli státuszválaszt küld, hogy a kliens értesüljön az elutasítás okáról. A hibaüzenet elküldése után a szerver lezárja a kapcsolatot, hiszen egy hibásan keretezett kérés után már nem állapítható meg biztosan, hol kezdődik a következő.
-- Átviteli hibák: Ha a hálózati művelet hiúsul meg, vagy a kliens a kérés közben bontja a kapcsolatot, már nincs kinek választ küldeni, így a szerver csendben lezárja a kapcsolatot.
+- *Protokollhibák:* A kliens hibás formátumú vagy a méretkorlátokat túllépő kérést küldött, maga a hálózati kapcsolat azonban még él.
+  Ilyenkor a szerver egy törzs nélküli státuszválaszt küld, hogy a kliens értesüljön az elutasítás okáról.
+  A hibaüzenet elküldése után a szerver lezárja a kapcsolatot, hiszen egy hibásan keretezett kérés után már nem állapítható meg biztosan, hol kezdődik a következő.
+- *Átviteli hibák:* Ha a hálózati művelet hiúsul meg, vagy a kliens a kérés közben bontja a kapcsolatot, már nincs kinek választ küldeni, így a szerver csendben lezárja a kapcsolatot.
 
 A belső implementáció során azt is tudatosan el kellett döntenem, hogyan kezelem azokat az állapotokat, amelyek a program helyes működése mellett elvileg sosem fordulhatnak elő.
 Ahol ezt a helyi logika vagy egy külső könyvtár dokumentált garanciája biztosítja, `unwrap` hívást alkalmazok, közvetlenül mellette egy rövid megjegyzésben rögzítve az indoklást.
 Ilyen például a memóriában lévő `Vec` pufferbe történő írás, amely nem hiúsulhat meg, vagy a `httparse` sikeres elemzése, amely garantáltan kitölti a metódust, az útvonalat és a verziót.
-Ezzel szemben ahol a feltétel teljesülése egy másik függvény viselkedésén múlik – és egy későbbi módosítás észrevétlenül elronthatja –, ott a `?` operátorral továbbadom a hibát.
+Ezzel szemben ahol a feltétel teljesülése egy másik függvény viselkedésén múlik -- és egy későbbi módosítás észrevétlenül elronthatja --, ott a `?` operátorral továbbadom a hibát.
 Így kezelem például a fejléc második elemzését is: ez elvileg nem vallhat kudarcot, hiszen a hívó pontosan az első elemzés által kimért bájtokat vágta le, ám ha egy jövőbeli változtatás miatt mégis sérülne ez a feltétel, a kliens szabályos `400`-as hibaválaszt kap.
-A `?` operátor mindenhol történő, gépies használatát azért kerültem, mert olyan elérhetetlen hibaágakat hozna létre, amelyeket egyetlen teszt sem tudna lefedni, ráadásul egy valódi programhibát is ártalmatlannak tűnő kliensoldali hibaválaszként rejtene el – szemben az `unwrap` hívással, amely azonnal és egyértelműen jelzi, ha a program valamelyik belső invariánsa sérült.
+A `?` operátor mindenhol történő, gépies használatát azért kerültem, mert olyan elérhetetlen hibaágakat hozna létre, amelyeket egyetlen teszt sem tudna lefedni, ráadásul egy valódi programhibát is ártalmatlannak tűnő kliensoldali hibaválaszként rejtene el -- szemben az `unwrap` hívással, amely azonnal és egyértelműen jelzi, ha a program valamelyik belső invariánsa sérült.
 
 #pagebreak()
 
