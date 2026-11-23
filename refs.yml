@@ -23,3 +23,13 @@ rkyv:
   url:
     value: https://github.com/rkyv/rkyv
     date: 2026-11-20
+
+tiny-http-server:
+  type: Repository
+  title: "tiny-http-server: A lightweight asynchronous HTTP/1.1 server"
+  author:
+    name: "Bálint Máté"
+  version: 2.0.0
+  url:
+    value: https://crates.io/crates/tiny-http-server/2.0.0
+    date: 2026-11-23

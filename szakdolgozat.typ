@@ -32,8 +32,10 @@
 #show heading.where(level: 1): set align(center)
 #show heading.where(level: 1): it => (raw, table, image).map(k => counter(figure.where(kind: k)).update(0)).join() + it
 
+#show figure: set block(above: 1.5em, below: 1.5em)
 #show figure.where(kind: raw): set figure(supplement: [Kódrészlet]) // a Typst magyar fordításából hiányzik a kódrészlet szava, ezért angolul „Listing” lenne
 
+#show bibliography: set text(size: 10pt)
 #show raw.where(block: true): set text(size: 9pt)
 #show raw.where(block: true): set align(left)
 #show raw.where(block: true): block.with(width: 100%, inset: 1em, stroke: 0.5pt + gray)
@@ -264,11 +266,71 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 == Hatókör és programozói felület
 
-#todo[a szerver önálló, alkalmazásfüggetlen könyvtár (tiny-http-server, crates.io); mit tud (HTTP/1.0 és 1.1, keep-alive, pipelining, `HEAD`) és mit nem (TLS, routing, middleware, streamelés, chunked törzs): ezeket a hívóra vagy egy reverse proxyra hagyja; a `Handler` trait és a lezárásokra adott általános implementáció; a törzs `Bytes`, a hiba is közönséges válasz; `Server::bind` és a `ServerBuilder` (`max_head_bytes`, `max_body_bytes`, `threads`); rövid példa a README alapján]
+A HTTP-szervert önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-http-server` néven a crates.io-n is közzétettem (@tiny-http-server).
+A könyvtár kizárólag a protokollkezelésért felel: a TCP-kapcsolaton érkező bájtokból HTTP-kéréseket állít elő, átadja őket a kezelőnek, a kapott választ pedig visszaírja a hálózati kapcsolatra.
+Támogatja a HTTP/1.0 és HTTP/1.1 szabványokat, egy kapcsolaton több kérést is képes egymás után kiszolgálni (keep-alive), és azokat a kéréseket is helyesen dolgozza fel, amelyeket a kliens az előző válasz megvárása nélkül küld el (pipelining).
+A `HEAD` kéréseket a kezelő egyszerű `GET`-ként kapja meg, a válaszból pedig a szerver automatikusan csak a fejlécet küldi vissza.
+
+A tervezésnél szándékosan törekedtem arra, hogy a könyvtárban csak az maradjon, ami szorosan a protokollhoz tartozik.
+Minden más feladatot a környező rétegekre bíztam: az útvonalválasztás (routing), a köztes rétegek (middleware) és a naplózás a hívó alkalmazás felelőssége, míg a titkosításról (TLS) a szerver elé állított fordított proxy (reverse proxy) gondoskodhat.
+Emellett a szerver nem támogatja a darabolt (chunked) adatátvitelt és a törzsek folyamatos streamelését sem, a kérések és válaszok törzsét teljes egészében a memóriában tartja.
+
+A szerver és az alkalmazás közötti hidat a `Handler` trait jelenti (@lst:handler. kódrészlet).
+Ennek egyetlen metódusa egy `Request`-ből aszinkron módon állít elő egy `Response`-t.
+Mindkét típus a szabványos `http` könyvtárból származik, így a szerver nem saját adatstruktúrákat kényszerít a fejlesztőre, hanem a Rust-ökoszisztémában megszokott típusokra épít.
+A traiten szereplő `Send + Sync + 'static` megkötésre azért van szükség, mert a kezelő egyetlen példányát a szerver összes munkaszála párhuzamosan használja.
+Mivel a traithez tartozik egy általános implementáció minden olyan függvényre és lezárásra (closure), amely kérést fogad és egy válaszra váró `Future`-t ad vissza, egy egyszerűbb alkalmazáshoz elég egyetlen `async fn` megadása.
+Ha viszont a kezelőnek belső állapotra – például egy adatbázis-kapcsolatra – is szüksége van, akkor a traitet egy saját struktúrán kell megvalósítani, ahogyan azt a bemutató alkalmazás `Router` típusa is teszi.
+
+#figure(
+  ```rust
+  pub trait Handler: Send + Sync + 'static {
+      fn handle(&self, request: Request<Body>)
+          -> impl Future<Output = Response<Body>> + Send;
+  }
+  ```,
+  caption: [A `Handler` trait],
+) <lst:handler>
+
+A kérés és a válasz törzsét a `Body` típus reprezentálja, amely a `bytes` könyvtár `Bytes` típusának álneve (type alias).
+Mivel ez egy referenciaszámlált bájtszelet, a kérés törzse másolás nélkül (zero-copy) vágható ki a szerver olvasási pufferéből, a válasz törzseként pedig akár a binárisba fordított statikus adatok – például egy stíluslap – is közvetlenül átadhatók.
+A kezelő metódusa `Result` helyett egyszerű `Response`-t ad vissza: a szerver nem kényszerít ki saját hibatípust, így az alkalmazásra bízza, hogyan kezeli a hibákat, és milyen HTTP-választ küld róluk.
+
+A szerver kétféleképpen indítható el: a `Server::bind` az alapértelmezett paraméterekkel köti a szervert a megadott címhez, míg a `ServerBuilder` segítségével ezek a beállítások indítás előtt testreszabhatók, így a hívónak csak az eltéréseket kell megadnia.
+A működés három fő paraméterrel szabályozható:
+- `max_head_bytes`: a kéréssor és a fejlécek együttes maximális mérete (alapértelmezés szerint 16 KiB),
+- `max_body_bytes`: a kérés törzsének méretkorlátja (alapértelmezés szerint 1 MiB),
+- `threads`: a kapcsolatokat kiszolgáló munkaszálak száma (alapértelmezés szerint a processzormagok számával egyezik meg).
+
+A szálak számát a típusrendszer a `NonZeroUsize` típussal védi, így nulla szálas szerver már fordítási időben sem hozható létre, ami feleslegessé teszi a futásidejű ellenőrzést.
+Maga a `run` metódus sikeres működés esetén végtelen ciklusban fut, és kizárólag hiba esetén tér vissza – ezt fejezi ki az `io::Result<Infallible>` visszatérési típus is.
+
+A @lst:pelda. kódrészlet egy teljes példán mutatja be a használatot: itt a kezelő egyetlen `async fn`, amely maga végzi az útvonalválasztást, a szerver pedig négy munkaszálon, 64 MiB-os törzskorláttal indul el.
+
+#figure(
+  ```rust
+  async fn route(request: Request<Body>) -> Response<Body> {
+      match request.uri().path() {
+          "/" => Response::new(Body::from("hello")),
+          _ => Response::builder()
+              .status(StatusCode::NOT_FOUND)
+              .body(Body::new())
+              .unwrap(),
+      }
+  }
+
+  ServerBuilder::new()
+      .max_body_bytes(64 * 1024 * 1024)
+      .threads(NonZeroUsize::new(4).unwrap())
+      .bind("127.0.0.1:8080", route).unwrap()
+      .run().unwrap();
+  ```,
+  caption: [Egy kis szerver a tiny-http-server könyvtárral],
+) <lst:pelda>
 
 == Szálak és kapcsolatok
 
-#todo[a hívó szál csak fogadja a kapcsolatokat, a `threads` darab munkaszál egy közös executoron szolgálja ki őket (`thread::scope`, leállító csatorna); kapcsolatonként egy task; `TCP_NODELAY` és indoklása; egy taskban keletkező panic csak az adott kapcsolatot zárja le]
+#todo[a hívó szál csak fogadja a kapcsolatokat, a `threads` darab munkaszál egy közös executoron szolgálja ki őket; kapcsolatonként egy task; `TCP_NODELAY` és indoklása; egy taskban keletkező panic csak az adott kapcsolatot zárja le]
 
 == A kérés beolvasása
 
@@ -278,7 +340,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === A fejléc elemzése és a zero-copy
 
-#todo[a `split_to` és a `freeze`, a `slice_ref` ablakok az URI-ra és a fejlécértékekre; a kétszeri elemzés indoklása (az első a változó pufferre mutat); a `Parts` csak egy `Request<()>`-en keresztül hozható létre]
+#todo[a `split_to` és a `freeze`, a `slice_ref` ablakok az URI-ra és a fejlécértékekre; a kétszeri elemzés indoklása (az első a változó pufferre mutat)]
 
 == Korlátok és védelmek
 
@@ -294,7 +356,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 == Hibakezelési elvek
 
-#todo[a belső `Error` és a státuszkódok leképezése, protokollhiba után státuszválasz, I/O hiba után csendes lezárás; `unwrap` + komment az invariánsokra, `?` ott, ahol a garancia nem helyi; nincs `debug_assert`]
+#todo[a belső `Error` és a státuszkódok leképezése, protokollhiba után státuszválasz, I/O hiba után csendes lezárás; `unwrap` + komment az invariánsokra, `?` ott, ahol a garancia nem helyi]
 
 #pagebreak()
 
@@ -338,7 +400,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 #pagebreak()
 
 // ---------- A bemutató alkalmazás ----------
-// terjedelem: kb. 6 oldal
+// terjedelem: kb. 5,5 oldal
 
 = A bemutató alkalmazás
 
@@ -373,27 +435,27 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 #pagebreak()
 
 // ---------- Mérések ----------
-// terjedelem: kb. 5 oldal
+// terjedelem: kb. 5,5 oldal
 
 = Mérések és kiértékelés
 
 == A mérések módja
 
-#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
+#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; viszonyításként ugyanez a minimális szerver Node.js-ben, a beépített `http` modullal (miért ez: elterjedt, egyszerű felállítani, nem keretrendszer); mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
 
 == A HTTP-szerver
 
 === A futtatható állomány mérete
 
-#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége]
+#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége; viszonyításként a Node.js futtatásához szükséges állomány mérete]
 
 === Áteresztőképesség és késleltetés
 
-#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz]
+#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz; ugyanez a Node.js-szerverrel]
 
 === Memóriahasználat
 
-#todo[indításkor, terhelés alatt és tétlen kapcsolatonként]
+#todo[indításkor, terhelés alatt és tétlen kapcsolatonként; ugyanez a Node.js-szerverrel]
 
 == Az adatbázisréteg
 
