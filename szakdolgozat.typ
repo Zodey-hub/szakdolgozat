@@ -43,6 +43,7 @@
 #set table(stroke: (_, y) => if y == 0 { (bottom: 0.5pt) }, align: left)
 #show table: box.with(stroke: (y: 1pt))
 #show table.cell.where(y: 0): set text(weight: "bold")
+#show table.cell: set par(justify: false)
 
 #let todo(body) = text(fill: red)[\[TODO: #body\]]
 
@@ -297,8 +298,8 @@ A kezelő metódusa `Result` helyett egyszerű `Response`-t ad vissza: a szerver
 
 A szerver kétféleképpen indítható el: a `Server::bind` az alapértelmezett paraméterekkel köti a szervert a megadott címhez, míg a `ServerBuilder` segítségével ezek a beállítások indítás előtt testreszabhatók, így a hívónak csak az eltéréseket kell megadnia.
 A működés három fő paraméterrel szabályozható:
-- `max_head_bytes`: a kéréssor és a fejlécek együttes maximális mérete (alapértelmezés szerint 16 KiB),
-- `max_body_bytes`: a kérés törzsének méretkorlátja (alapértelmezés szerint 1 MiB),
+- `max_head_bytes`: a kéréssor és a fejlécek együttes maximális mérete,
+- `max_body_bytes`: a kérés törzsének maximális mérete,
 - `threads`: a kapcsolatokat kiszolgáló munkaszálak száma (alapértelmezés szerint a processzormagok számával egyezik meg).
 
 A szálak számát `NonZeroUsize` típusú érték adja meg, így a nulla szálszám a típus szintjén ki van zárva: az értéket a hívó állítja elő, a szervernek pedig már nem kell ellenőriznie.
@@ -340,6 +341,7 @@ Ha a kapcsolatok fogadása valamilyen hiba miatt leáll, a hívó szál lezár e
 Ennek hatására a szálak szabályosan kilépnek, a `run` metódus pedig csak ezután adja vissza a hibát.
 
 Minden elfogadott kapcsolathoz egyetlen task tartozik, amely a kapcsolat teljes élettartama alatt egymás után olvassa be és szolgálja ki a beérkező kéréseket.
+Hogy a kapcsolat egy válasz után nyitva marad-e, azt a kérés verziója és `Connection` fejléce dönti el: HTTP/1.1 esetén nyitva marad, hacsak a kliens nem küld `close` jelzést, HTTP/1.0 esetén pedig csak akkor, ha a kliens `keep-alive` jelzéssel kéri.
 Az olvasó és író adatfolyamok a task saját, lokális változói, így a szerver oldalán a párhuzamos kapcsolatok között nincs semmilyen megosztott, zárolást igénylő állapot.
 
 Az újonnan elfogadott kapcsolatokon bekapcsolom a `TCP_NODELAY` opciót, amivel letiltom a Nagle-algoritmust (@rfc9293).
@@ -410,8 +412,25 @@ A második elemzés ezért már a leválasztott és befagyasztott fejlécen fut 
 
 == Korlátok és védelmek
 
-A szerver semmit nem feltételez a kliens megbízhatóságáról: a beérkező kérésben szereplő minden adat csupán egy ellenőrizetlen állítás, amelyet hitelesíteni kell, mielőtt a program erőforrást szánna rá.
-A legkényesebb ilyen paraméter a törzs hossza, hiszen ettől függ, hol ér véget az aktuális kérés, és hol kezdődik a következő.
+A szerver semmit nem feltételez a kliens megbízhatóságáról: a beérkező kérésben szereplő minden adat csupán egy ellenőrizetlen állítás, amelyet hitelesíteni kell, mielőtt a program erőforrást szánna rá, ezért minden kapcsolatra méret- és időkorlátok vonatkoznak (@tbl:korlatok. táblázat).
+A két méretkorlát a `ServerBuilder`-en állítható, a többi érték a könyvtár publikus konstansa.
+
+#figure(
+  table(
+    columns: (1fr, auto, auto),
+    table.header[Korlát][Érték][Túllépéskor],
+    [`max_head_bytes`: a kéréssor és a fejlécek mérete], [16 KiB], [`431 Request Header Fields Too Large`],
+    [`MAX_HEADERS`: a fejlécek száma], [64], [`400 Bad Request`],
+    [`max_body_bytes`: a törzs mérete], [1 MiB], [`413 Payload Too Large`],
+    [`IDLE_TIMEOUT`: várakozás a következő kérésre], [5 s], [a kapcsolat bontása],
+    [`CONNECTION_TIMEOUT`: egy kérés beolvasása vagy egy válasz kiírása], [30 s], [a kapcsolat bontása],
+  ),
+  caption: [A szerver korlátai],
+) <tbl:korlatok>
+
+=== A törzs hossza
+
+A legkényesebb ilyen állítás a törzs hossza, hiszen ettől függ, hol ér véget az aktuális kérés, és hol kezdődik a következő.
 Ezt az értéket a `content_length` függvény határozza meg a @tbl:hossz. táblázatban látható szabályok alapján, szigorúan a felsorolás sorrendjében haladva.
 
 #figure(
@@ -428,34 +447,25 @@ Ezt az értéket a `content_length` függvény határozza meg a @tbl:hossz. táb
   caption: [A törzs hosszának meghatározása],
 ) <tbl:hossz>
 
-Ezen szabályok hátterében a HTTP request smuggling támadások elleni védekezés áll.
+A szabályok a HTTP request smuggling támadások ellen védenek.
 Ha egy kérés kétértelműen értelmezhető, és két fél -- például egy fordított proxy és a mögötte álló alkalmazásszerver -- eltérő helyen látja a végét, akkor a törzs lemaradó részéből az egyik fél szemében egy új, ellenőrizetlen kérés születhet.
-A kétértelmű helyzetekben a szerver ezért sosem próbál találgatni, hanem azonnal elutasítja a kérést: több `Content-Length` fejléc esetén `400 Bad Request` válasszal tér vissza.
-A `Transfer-Encoding` fejlécet a szerver nem kezeli, de figyelmen kívül sem hagyhatja, mert akkor rossz helyen látná a kérés végét, ezért ilyenkor `501 Not Implemented` hibát küld.
-A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, így a túl nagy méretet bejelentő kérés azonnal `413 Payload Too Large` választ kap, és a szerver egyetlen bájtot sem vár meg a törzsből.
+A szerver ezért kétértelmű helyzetben nem választ a lehetséges értelmezések közül, hanem elutasítja a kérést.
+A `Transfer-Encoding` fejlécet ugyanezért nem hagyhatja figyelmen kívül, bár nem kezeli: ha nem venné észre, rossz helyen látná a kérés végét.
+A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, így a túl nagy méretet bejelentő kérés azonnal választ kap, és a szerver egyetlen bájtot sem vár meg a törzsből.
 
-A bejelentett hosszt a memóriafoglalás során sem veszem készpénznek.
-Bár kézenfekvő volna a beolvasás előtt egyszerre lefoglalni a teljes `Content-Length` méretű területet, ezt szándékosan elkerülöm.
-Egy támadó ugyanis bejelenthetne egy éppen a korlát alatti törzset, majd küldés nélkül várakozna, amivel néhány bájtnyi fejléc segítségével kapcsolatonként a teljes törzskorlátnak megfelelő memóriát köthetné le az időkorlát lejártáig.
-Sok párhuzamos kapcsolaton keresztül ez már kis hálózati forgalommal is kimerítheti a szerver memóriáját, ami a Slowloris típusú támadások egy változata.
-Előzetes foglalás nélkül a puffer csak a ténylegesen megérkezett bájtok arányában növekszik, így a szerver legfeljebb annyi memóriát használ fel, amennyi adatot a kliens valóban elküldött.
-Ennek az ára, hogy egy nagyobb törzs beolvasása közben a puffert többször is újra kell foglalni.
+=== Időkorlátok
 
-== Időkorlátok és kapcsolatkezelés
-
-A méretkorlátok önmagukban még nem nyújtanak teljes védelmet, hiszen egy kliens úgy is lekötheti a szerver erőforrásait, hogy egyáltalán nem küld adatot, vagy csak rendkívül lassan csepegteti azt.
+Egy kliens úgy is lekötheti a szerver erőforrásait, hogy egyáltalán nem küld adatot, vagy csak rendkívül lassan csepegteti azt, ezen alapulnak a Slowloris típusú támadások.
 A kapcsolatot kiszolgáló ciklus ezért minden hálózati várakozást időkorláttal futtat: a művelet és egy időzítő versenyez egymással, és ha az utóbbi jár le előbb, a szerver válasz nélkül lezárja a kapcsolatot.
-A könyvtár két publikus konstansként definiált időkorlátot használ:
-- A tétlenségi időkorlát (`IDLE_TIMEOUT`, 5 s) azt szabja meg, meddig várakozhat egy nyitott kapcsolat a következő kérés első bájtjára.
-- A kapcsolati időkorlát (`CONNECTION_TIMEOUT`, 30 s) a már megkezdett kérés teljes beolvasására vonatkozik, és ugyanekkora időkeret áll rendelkezésre a válasz kiírására is.
+A rövid tétlenségi időkorlát (`IDLE_TIMEOUT`) a következő kérés első bájtjára való várakozásra, a hosszabb kapcsolati időkorlát (`CONNECTION_TIMEOUT`) a már megkezdett kérés beolvasására és a válasz kiírására vonatkozik.
 
 A két állapotot a `wait_for_request` metódus választja el egymástól.
-Ez megvárja a következő kérés első bájtjának megérkezését -- vagy pipelining esetén azonnal visszatér, ha a pufferben már van feldolgozatlan adat --, és ténylegesen csak ezután indul el a kérés beolvasása.
+Ez megvárja a következő kérés első bájtjának megérkezését -- vagy pipelining esetén azonnal visszatér, ha a pufferben már van feldolgozatlan adat --, és csak ezután indul el a kérés beolvasása.
 Tétlen várakozás két helyzetben fordul elő: közvetlenül a kapcsolat felépülése után (mivel a modern böngészők gyakran előre nyitnak tartalék kapcsolatokat, amelyeket később nem feltétlenül használnak fel), valamint keep-alive működésnél két egymást követő kérés között.
 Egy néma kapcsolat csak feleslegesen foglalja az erőforrásokat, ezért erre elég egy rövid türelmi idő.
 
-Ha viszont a kliens már megkezdte a küldést, akkor aktívan dolgozik, és egy lassabb hálózati kapcsolaton egy nagyobb törzs feltöltéséhez több időre is szüksége lehet.
-Mivel a 30 másodperces korlát a kérés egészére vonatkozik -- nem pedig az egyes olvasási műveletekre --, egy bájtonként csepegtető kliens sem tarthatja nyitva a kapcsolatot ennél tovább egyetlen kérés ürügyén.
+Ha viszont a kliens már megkezdte a küldést, akkor aktívan dolgozik, és egy lassabb hálózaton egy nagyobb törzs feltöltéséhez több időre is szüksége lehet.
+Mivel a 30 másodperces korlát a kérés egészére vonatkozik, nem pedig az egyes olvasási műveletekre, egy bájtonként csepegtető kliens sem tarthatja ennél tovább nyitva a kapcsolatot egyetlen kérés ürügyén.
 Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsolat tetszőleges ideig életben maradhat, amíg két kérés között nem telik el 5 másodpercnél hosszabb szünet (@fig:idovonal. ábra).
 
 #figure(
@@ -496,10 +506,23 @@ Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsola
   caption: [Egy kapcsolat kiszolgálásának ciklusa és az időkorlátok],
 ) <fig:idovonal>
 
-Fontos ugyanakkor látni, hogy az idő- és méretkorlátok kizárólag kapcsolatonként érvényesek; az egyidejűleg nyitott kapcsolatok számát a szerver nem korlátozza, hanem minden elfogadott kapcsolathoz feltétel nélkül elindít egy új taskot.
+=== A memóriahasználat
+
+A fejléc méretét a szerver nemcsak a kész fejlécen, hanem olvasás közben is ellenőrzi: ha a puffer már nagyobb a korlátnál, de a fejléc még mindig nem teljes, a kérést elutasítja.
+Így egy véget nem érő fejléc a puffert legfeljebb egy olvasásnyival növelheti a korlát fölé.
+A fejlécek számának korlátja a `httparse` működéséből adódik: az elemző egy előre megadott méretű, a veremben lévő tömbbe gyűjti a fejléceket, így maga az elemzés nem foglal memóriát.
+
+A bejelentett törzshosszt a memóriafoglalás során sem veszem készpénznek.
+Bár kézenfekvő volna a beolvasás előtt egyszerre lefoglalni a teljes `Content-Length` méretű területet, ezt szándékosan elkerülöm.
+Egy támadó ugyanis bejelenthetne egy éppen a korlát alatti törzset, majd küldés nélkül várakozna, és így néhány bájtnyi fejléccel kapcsolatonként a teljes törzskorlátnak megfelelő memóriát köthetne le a kapcsolati időkorlát lejártáig.
+Sok párhuzamos kapcsolaton keresztül ez már kis hálózati forgalommal is kimerítheti a szerver memóriáját, ami a Slowloris-támadás egy változata.
+Előzetes foglalás nélkül a puffer csak a ténylegesen megérkezett bájtokkal együtt növekszik, így a szerver legfeljebb annyi memóriát használ fel, amennyi adatot a kliens valóban elküldött.
+Hátránya, hogy egy nagyobb törzs beolvasása közben a puffert többször is újra kell foglalni.
+
+Az összes korlát kapcsolatonként érvényes: az egyidejűleg nyitott kapcsolatok számát a szerver nem korlátozza, hanem minden elfogadott kapcsolathoz feltétel nélkül elindít egy új taskot.
 Legrosszabb esetben a memóriaigény így a párhuzamos kapcsolatok számának és a kapcsolatonkénti fejléc- és törzskorlát összegének szorzata, amelynek nincs felső határa.
-Belső hálózaton vagy egy fordított proxy mögött -- amely a titkosítás mellett a kapcsolatok számát is korlátozhatja -- ez kevésbé kritikus.
-Közvetlenül a nyilvános internetre kitett szerver esetén azonban egy globális kapcsolatszám-korlát többet érne bármelyik meglévő paraméter finomhangolásánál, így ez a könyvtár egyik legfontosabb továbbfejlesztési iránya.
+Belső hálózaton vagy egy fordított proxy mögött -- amely a kapcsolatok számát is korlátozhatja -- ez kevésbé kritikus.
+Közvetlenül a nyilvános internetre kitett szerveren azonban egy globális kapcsolatszám-korlát többet érne bármelyik meglévő paraméter finomhangolásánál.
 
 == A válasz kiírása
 
