@@ -269,7 +269,6 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 A HTTP-szervert önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-http-server` néven a crates.io-n is közzétettem (@tiny-http-server).
 A könyvtár kizárólag a protokollkezelésért felel: a TCP-kapcsolaton érkező bájtokból HTTP-kéréseket állít elő, átadja őket a kezelőnek, a kapott választ pedig visszaírja a hálózati kapcsolatra.
 Támogatja a HTTP/1.0 és HTTP/1.1 szabványokat, egy kapcsolaton több kérést is képes egymás után kiszolgálni (keep-alive), és azokat a kéréseket is helyesen dolgozza fel, amelyeket a kliens az előző válasz megvárása nélkül küld el (pipelining).
-A `HEAD` kéréseket a kezelő egyszerű `GET`-ként kapja meg, a válaszból pedig a szerver automatikusan csak a fejlécet küldi vissza.
 
 A tervezésnél szándékosan törekedtem arra, hogy a könyvtárban csak az maradjon, ami szorosan a protokollhoz tartozik.
 Minden más feladatot a környező rétegekre bíztam: az útvonalválasztás (routing), a köztes rétegek (middleware) és a naplózás a hívó alkalmazás felelőssége, míg a titkosításról (TLS) a szerver elé állított fordított proxy (reverse proxy) gondoskodhat.
@@ -303,7 +302,7 @@ A működés három fő paraméterrel szabályozható:
 - `threads`: a kapcsolatokat kiszolgáló munkaszálak száma (alapértelmezés szerint a processzormagok számával egyezik meg).
 
 A szálak számát `NonZeroUsize` típusú érték adja meg, így a nulla szálszám a típus szintjén ki van zárva: az értéket a hívó állítja elő, a szervernek pedig már nem kell ellenőriznie.
-Maga a `run` metódus sikeres működés esetén végtelen ciklusban fut, és kizárólag hiba esetén tér vissza -- ezt fejezi ki az `io::Result<Infallible>` visszatérési típus is.
+A `run` metódus visszatérési típusa `io::Result<Infallible>`, vagyis a metódus csak hibával térhet vissza.
 
 A @lst:pelda. kódrészlet egy teljes példán mutatja be a használatot: itt a kezelő egyetlen `async fn`, amely maga végzi az útvonalválasztást, a szerver pedig négy munkaszálon, 64 MiB-os törzskorláttal indul el.
 
@@ -432,7 +431,7 @@ Ezt az értéket a `content_length` függvény határozza meg a @tbl:hossz. táb
 Ezen szabályok hátterében a HTTP request smuggling támadások elleni védekezés áll.
 Ha egy kérés kétértelműen értelmezhető, és két fél -- például egy fordított proxy és a mögötte álló alkalmazásszerver -- eltérő helyen látja a végét, akkor a törzs lemaradó részéből az egyik fél szemében egy új, ellenőrizetlen kérés születhet.
 A kétértelmű helyzetekben a szerver ezért sosem próbál találgatni, hanem azonnal elutasítja a kérést: több `Content-Length` fejléc esetén `400 Bad Request` válasszal tér vissza.
-A darabolt (chunked) átvitelt a könyvtár nem támogatja, de a `Transfer-Encoding` fejlécet mégsem hagyhatja egyszerűen figyelmen kívül -- hiszen akkor hibásan határozná meg a kérés végét --, ezért ilyenkor `501 Not Implemented` hibát küld.
+A `Transfer-Encoding` fejlécet a szerver nem kezeli, de figyelmen kívül sem hagyhatja, mert akkor rossz helyen látná a kérés végét, ezért ilyenkor `501 Not Implemented` hibát küld.
 A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, így a túl nagy méretet bejelentő kérés azonnal `413 Payload Too Large` választ kap, és a szerver egyetlen bájtot sem vár meg a törzsből.
 
 A bejelentett hosszt a memóriafoglalás során sem veszem készpénznek.
@@ -441,11 +440,6 @@ Egy támadó ugyanis bejelenthetne egy éppen a korlát alatti törzset, majd k�
 Sok párhuzamos kapcsolaton keresztül ez már kis hálózati forgalommal is kimerítheti a szerver memóriáját, ami a Slowloris típusú támadások egy változata.
 Előzetes foglalás nélkül a puffer csak a ténylegesen megérkezett bájtok arányában növekszik, így a szerver legfeljebb annyi memóriát használ fel, amennyi adatot a kliens valóban elküldött.
 Ennek az ára, hogy egy nagyobb törzs beolvasása közben a puffert többször is újra kell foglalni.
-
-A védelem a válaszok összeállításakor is érvényesül.
-Az üzenet keretezését meghatározó fejléceket (`Content-Length`, `Transfer-Encoding`), valamint a `Connection` fejlécet a kezelő nem bírálhatja felül: ha ezek szerepelnek a visszaadott válaszban, a szerver a hálózatra írás előtt eltávolítja őket.
-A `Content-Length` értékét mindig a válasz törzsének tényleges hosszából, a `Connection` fejlécet pedig a kapcsolat megtartásáról hozott saját döntéséből generálja.
-Így kizárható, hogy a kezelő más méretet jelentsen be, mint amennyit a szerver valójában elküld, és a kliens emiatt rossz helyen vágja el a választ.
 
 == Időkorlátok és kapcsolatkezelés
 
@@ -497,7 +491,6 @@ Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsola
         ]),
       )
     })
-    text(size: 8pt)[Ha egy időkorlát lejár, a szerver válasz nélkül lezárja a kapcsolatot.]
   }),
   kind: image,
   caption: [Egy kapcsolat kiszolgálásának ciklusa és az időkorlátok],
@@ -515,8 +508,12 @@ A kimenet egy `Vec<u8>` pufferben áll össze, amely a bejövő pufferhez hasonl
 Minden új válasz összeállítása előtt kiürítem, ami lenullázza a tárolt adatok hosszát, de megőrzi a már lefoglalt kapacitást -- így egy keep-alive kapcsolaton az első válasz után jellemzően már nincs szükség újabb memóriafoglalásra.
 Az összeállítás elején a puffert egyszerre bővítem a várható méretre (a törzs hosszára, valamint a státuszsor és a fejlécek becsült keretére), elkerülve ezzel a többszöri újrafoglalást írás közben.
 
-A kimeneti bájtfolyamba sorban bekerül a státuszsor, a kezelő által visszaadott fejlécek, a szerver által generált `Content-Length` és `Connection` mezők, az elválasztó üres sor, végül pedig maga a törzs, és a teljes üzenet egyetlen írási művelettel jut ki a hálózatra.
-A törzs bemásolása a pufferbe tudatos tervezési kompromisszum.
+A kimeneti bájtfolyamba sorban bekerül a státuszsor, a kezelő által visszaadott fejlécek, a szerver által generált `Content-Length` és `Connection` mezők, az elválasztó üres sor, végül pedig maga a törzs.
+Az üzenet keretezését meghatározó fejléceket (`Content-Length`, `Transfer-Encoding`) és a `Connection` fejlécet a kezelő nem bírálhatja felül: ha ezek szerepelnek a visszaadott válaszban, a szerver kihagyja őket.
+A `Content-Length` értékét mindig a törzs tényleges hosszából, a `Connection` fejlécet pedig a kapcsolat megtartásáról hozott saját döntéséből állítja elő.
+Így kizárható, hogy a kezelő más méretet jelentsen be, mint amennyit a szerver valójában elküld, és a kliens emiatt rossz helyen vágja el a választ.
+
+A teljes üzenet egyetlen írási művelettel jut ki a hálózatra, ezért a törzs is bemásolódik a pufferbe, ami tudatos tervezési kompromisszum.
 Bár elkerülhető lenne vektoros írással, amely a fejlécet és a törzset két külön memóriaszeletként adja át az operációs rendszernek, a használt aszinkron könyvtár ehhez nem nyújt kész támogatást, a részleges írások kezelését pedig saját logikával kellene pótolni.
 Ezt a többletbonyolultságot nem tartottam arányosnak a várható nyereséggel, így az egyszerűbb utat választottam -- aminek ára, hogy a törzs egyszer lemásolódik, a puffer lefoglalt kapacitása pedig a kapcsolat végéig akkora marad, amekkorát a legnagyobb addigi válasz megkövetelt.
 
@@ -529,7 +526,6 @@ Ennek a kényelemnek az ára, hogy a kezelő a `HEAD` kéréseknél is előáll�
 
 A kapcsolat kiszolgálása közben felmerülő hibákat egy belső `Error` enum írja le, amely nem része a könyvtár publikus felületének.
 Az ilyen hibák sosem jutnak el a szerver hívójáig: kivétel nélkül az adott kapcsolat lezárásával végződnek, miközben a többi párhuzamos kapcsolatot egyáltalán nem érintik.
-A hívó oldal kizárólag az új kapcsolatok fogadásakor fellépő hibákat kapja meg a `run` metódus visszatérési értékeként, míg az alkalmazás szintű hibák kezeléséről -- ahogy a programozói felületnél már láttuk -- maga a kezelő dönt.
 
 A belső hibák két fő csoportra oszlanak, amelyeket egyetlen metódus (`client_status`) választ szét azáltal, hogy minden hibaváltozathoz vagy hozzárendel egy HTTP-státuszkódot, vagy üres értéket ad vissza:
 
