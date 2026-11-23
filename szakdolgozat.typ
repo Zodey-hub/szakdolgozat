@@ -441,21 +441,21 @@ A @lst:pelda. kódrészlet egy teljes példán mutatja be a használatot: itt a 
 
 == A mérések módja
 
-#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; viszonyításként ugyanez a minimális szerver Node.js-ben, a beépített `http` modullal (miért ez: elterjedt, egyszerű felállítani, nem keretrendszer); mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
+#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
 
 == A HTTP-szerver
 
 === A futtatható állomány mérete
 
-#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége; viszonyításként a Node.js futtatásához szükséges állomány mérete]
+#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége]
 
 === Áteresztőképesség és késleltetés
 
-#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz; ugyanez a Node.js-szerverrel]
+#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz]
 
 === Memóriahasználat
 
-#todo[indításkor, terhelés alatt és tétlen kapcsolatonként; ugyanez a Node.js-szerverrel]
+#todo[indításkor, terhelés alatt és tétlen kapcsolatonként]
 
 == Az adatbázisréteg
 
