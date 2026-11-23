@@ -33,3 +33,23 @@ tiny-http-server:
   url:
     value: https://crates.io/crates/tiny-http-server/2.0.0
     date: 2026-11-23
+
+async-executor:
+  type: Repository
+  title: "async-executor: Async executor"
+  author: ["Glavina, Stjepan", "Nunley, John"]
+  version: 1.14.1
+  url:
+    value: https://github.com/smol-rs/async-executor
+    date: 2026-11-23
+
+rfc9293:
+  type: Report
+  title: Transmission Control Protocol (TCP)
+  author: "Eddy, Wesley"
+  date: 2022-08
+  serial-number: RFC 9293
+  publisher: RFC Editor
+  url:
+    value: https://www.rfc-editor.org/rfc/rfc9293
+    date: 2026-11-23

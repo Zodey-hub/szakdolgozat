@@ -330,7 +330,23 @@ A @lst:pelda. kódrészlet egy teljes példán mutatja be a használatot: itt a 
 
 == Szálak és kapcsolatok
 
-#todo[a hívó szál csak fogadja a kapcsolatokat, a `threads` darab munkaszál egy közös executoron szolgálja ki őket; kapcsolatonként egy task; `TCP_NODELAY` és indoklása; egy taskban keletkező panic csak az adott kapcsolatot zárja le]
+A `run` metódusban a feladatokat két külön szerepkörre bontottam.
+A hívó szál kizárólag az új bejövő kapcsolatokat fogadja egy végtelen ciklusban, és mindegyikhez elindít egy-egy aszinkron feladatot (task).
+Magát a kiszolgálást a `threads` darab munkaszál végzi, amelyek egyetlen közös `Executor`-on osztoznak (@async-executor), így bármelyik szál képes bármelyik kliens kérését feldolgozni.
+Ennek előnye, hogy ha egy kezelő blokkoló műveletet végez, csak a saját munkaszálát tartja fel: a többi szál zavartalanul tovább dolgozik, és az új kapcsolatok fogadása sem akad meg.
+
+A munkaszálakat a szabványos könyvtár `thread::scope` függvényével hozom létre.
+Mivel a fordító garantálja, hogy a hatókör végéig minden elindított szál befejeződik, ezek közvetlenül kölcsönözhetik a szervert és az executort, így egyiket sem szükséges `Arc`-ba csomagolni.
+Ha a kapcsolatok fogadása valamilyen hiba miatt leáll, a hívó szál lezár egy vezérlőcsatornát, amelyre a munkaszálak várakoznak.
+Ennek hatására a szálak szabályosan kilépnek, a `run` metódus pedig csak ezután adja vissza a hibát.
+
+Minden elfogadott kapcsolathoz egyetlen task tartozik, amely a kapcsolat teljes élettartama alatt egymás után olvassa be és szolgálja ki a beérkező kéréseket.
+Az olvasó és író adatfolyamok a task saját, lokális változói, így a szerver oldalán a párhuzamos kapcsolatok között nincs semmilyen megosztott, zárolást igénylő állapot.
+
+Az újonnan elfogadott kapcsolatokon bekapcsolom a `TCP_NODELAY` opciót, amivel letiltom a Nagle-algoritmust (@rfc9293).
+Ez az algoritmus visszatartaná a kisebb adatcsomagokat mindaddig, amíg a korábban elküldött adatokra meg nem érkezik a nyugta, hogy több apró írást egyetlen szegmensbe vonjon össze.
+Mivel azonban a szerver minden választ egyetlen pufferben állít össze, és egy lépésben ír ki a hálózatra, nincs mit összevonni – a várakozás csak felesleges késleltetést okozna.
+Ha az opció beállítása valamiért mégsem sikerül, a kapcsolat ettől még működőképes marad, ezért ezt a hibát figyelmen kívül hagyom.
 
 == A kérés beolvasása
 
