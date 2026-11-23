@@ -449,7 +449,64 @@ A `Content-Length` értékét mindig a válasz törzsének tényleges hosszábó
 
 == Időkorlátok és kapcsolatkezelés
 
-#todo[tétlenségi (5 s) és kérésolvasási (30 s) időkorlát, a `wait_for_request` választja el a kettőt (idővonal egy keep-alive kapcsolaton); a kapcsolatszám-korlát hiánya és következménye]
+A méretkorlátok önmagukban még nem nyújtanak teljes védelmet, hiszen egy kliens úgy is lekötheti a szerver erőforrásait, hogy egyáltalán nem küld adatot, vagy csak rendkívül lassan csepegteti azt.
+A kapcsolatot kiszolgáló ciklus ezért minden hálózati várakozást időkorláttal futtat: a művelet és egy időzítő versenyez egymással, és ha az utóbbi jár le előbb, a szerver válasz nélkül lezárja a kapcsolatot.
+A könyvtár két publikus konstansként definiált időkorlátot használ:
+- A tétlenségi időkorlát (`IDLE_TIMEOUT`, 5 s) azt szabja meg, meddig várakozhat egy nyitott kapcsolat a következő kérés első bájtjára.
+- A kapcsolati időkorlát (`CONNECTION_TIMEOUT`, 30 s) a már megkezdett kérés teljes beolvasására vonatkozik, és ugyanekkora időkeret áll rendelkezésre a válasz kiírására is.
+
+A két állapotot a `wait_for_request` metódus választja el egymástól.
+Ez megvárja a következő kérés első bájtjának megérkezését – vagy pipelining esetén azonnal visszatér, ha a pufferben már van feldolgozatlan adat –, és ténylegesen csak ezután indul el a kérés beolvasása.
+Tétlen várakozás két helyzetben fordul elő: közvetlenül a kapcsolat felépülése után (mivel a modern böngészők gyakran előre nyitnak tartalék kapcsolatokat, amelyeket később nem feltétlenül használnak fel), valamint keep-alive működésnél két egymást követő kérés között.
+Egy néma kapcsolat csak feleslegesen foglalja az erőforrásokat, ezért erre elég egy rövid türelmi idő.
+
+Ha viszont a kliens már megkezdte a küldést, akkor aktívan dolgozik, és egy lassabb hálózati kapcsolaton egy nagyobb törzs feltöltéséhez több időre is szüksége lehet.
+Mivel a 30 másodperces korlát a kérés egészére vonatkozik – nem pedig az egyes olvasási műveletekre –, egy bájtonként csepegtető kliens sem tarthatja nyitva a kapcsolatot ennél tovább egyetlen kérés ürügyén.
+Az időzítő minden új kérés kezdetekor újraindul, így egy aktív kapcsolat tetszőleges ideig életben maradhat, amíg két kérés között nem telik el 5 másodpercnél hosszabb szünet (@fig:idovonal. ábra).
+
+#figure(
+  block(width: 100%, inset: 1em, stroke: 0.5pt + gray, {
+    set text(size: 9pt)
+    let idle = rgb("#cfe0f1")
+    let busy = rgb("#f6dcc0")
+    let state(fill, name, limit) = rect(
+      width: 100%,
+      radius: 3pt,
+      fill: fill,
+      stroke: 0.5pt + gray,
+    )[#name \ #text(size: 8pt, style: "italic", limit)]
+    let step(label) = [#text(size: 7pt, label) \ #sym.arrow.r.long]
+    let gap = 4em
+    layout(size => {
+      let state-width = (size.width - 3 * gap) / 4
+      grid(
+        columns: (state-width, gap) * 3 + (state-width,),
+        align: center + horizon,
+        state(idle)[várakozás][legfeljebb 5 s],
+        step[első bájt],
+        state(busy)[a kérés beolvasása][legfeljebb 30 s],
+        step[kérés kész],
+        state(luma(225))[a kezelő fut][nincs időkorlát],
+        step[válasz kész],
+        state(busy)[a válasz kiírása][legfeljebb 30 s],
+        grid.cell(colspan: 7, pad(x: state-width / 2)[
+          #box(width: 100%, height: 10pt, stroke: (left: 0.5pt, right: 0.5pt, bottom: 0.5pt))[
+            #place(dx: -3.5pt, dy: -3.5pt, text(size: 7pt)[▲])
+          ]
+          #text(size: 8pt)[keep-alive esetén a ciklus a következő kéréssel újraindul]
+        ]),
+      )
+    })
+    text(size: 8pt)[Ha egy időkorlát lejár, a szerver válasz nélkül lezárja a kapcsolatot.]
+  }),
+  kind: image,
+  caption: [Egy kapcsolat kiszolgálásának ciklusa és az időkorlátok],
+) <fig:idovonal>
+
+Fontos ugyanakkor látni, hogy az idő- és méretkorlátok kizárólag kapcsolatonként érvényesek; az egyidejűleg nyitott kapcsolatok számát a szerver nem korlátozza, hanem minden elfogadott kapcsolathoz feltétel nélkül elindít egy új taskot.
+Legrosszabb esetben a memóriaigény így a párhuzamos kapcsolatok számának és a kapcsolatonkénti fejléc- és törzskorlát összegének szorzata, amelynek nincs felső határa.
+Belső hálózaton vagy egy fordított proxy mögött – amely a titkosítás mellett a kapcsolatok számát is korlátozhatja – ez kevésbé kritikus.
+Közvetlenül a nyilvános internetre kitett szerver esetén azonban egy globális kapcsolatszám-korlát többet érne bármelyik meglévő paraméter finomhangolásánál, így ez a könyvtár egyik legfontosabb továbbfejlesztési iránya.
 
 == A válasz kiírása
 
