@@ -575,7 +575,17 @@ Az `unwrap` ezzel szemben azonnal és egyértelműen jelzi, ha a program egy bel
 
 == Követelmények és tervezési szempontok
 
-#todo[az adatbázisréteg önálló, alkalmazásfüggetlen könyvtár (tiny-database, crates.io); mit ad (típusos rekordok `u64` azonosítóval egy fájlban, másodlagos indexek egyenlőségre, tartományra és előtagra) és mit nem (lekérdezőnyelv, join, egyediségi megkötés); elv: a könyvtár kódja legyen egyszerű, a kényelmi réteget (pl. makró) a felhasználó megírhatja; a `Database` állapot nélküli, szálak között `Mutex` nélkül megosztható]
+A HTTP-szerverhez hasonlóan az adatbázisréteget is önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-database` néven a crates.io-n közzétettem (@tiny-database).
+A könyvtár típusos rekordokat tárol egyetlen fájlban, mindegyiket egy `u64` azonosító alatt, amelyet a hívó választ meg.
+A rekordok az azonosítójuk mellett másodlagos indexeken keresztül is lekérdezhetők: egy index egyenlőségre, értéktartományra és sztringek esetén előtagra is kereshető.
+A tárolást a redb beágyazott kulcs--érték tároló (@redb), a rekordok bájtokká alakítását az rkyv (@rkyv) végzi.
+
+Szándékosan kimaradt minden, ami egy általános adatbázis-kezelőt jellemez, de egy kis alkalmazáshoz nem szükséges: nincs lekérdezőnyelv, táblák közötti összekapcsolás (join), egyediségi megkötés és sémaverzió sem.
+Ha egy lekérdezés több feltételt tartalmaz, a hívó egy indexből kéri le a jelölteket, a többi feltételt pedig a visszakapott rekordokon ellenőrzi.
+
+A `Database` típus egyetlen mezője a redb adatbázis-objektuma, saját állapota nincs.
+Az író metódusok is csak megosztott referenciát (`&self`) kérnek, a zárolásról pedig a redb gondoskodik: egyszerre csak egy író tranzakció futhat, a többi megvárja annak végét.
+Így a `Database` szálak között `Mutex` nélkül megosztható, és közvetlenül a HTTP-szerver kezelőjének állapotába tehető, amelyet a szerver összes munkaszála párhuzamosan használ.
 
 == A tárolt adatok modellje
 
