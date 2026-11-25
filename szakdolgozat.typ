@@ -776,7 +776,25 @@ Ennek a kialakításnak két fontos következménye van: egyrészt minden felül
 
 === Lekérdezések
 
-#todo[`get`, `find`, `range`, `all`, valamint `contains` és `count`; a `find` egy egykulcsú tartomány; az indexbejárás menete (azonosítók gyűjtése, ismétlődés szűrése, sorok betöltése); egy olvasó tranzakció pillanatképe; `Vec` az iterátor helyett, mert az a tranzakciót kölcsönözné]
+Az olvasó műveletek közül a `get` egyedi azonosító alapján kér le egyetlen rekordot, míg az `all` az adott típus összes tárolt példányát adja vissza, azonosító szerint növekvő sorrendben.
+A `contains` és a `count` metódusok a rekordok tényleges betöltése nélkül adnak választ: az előbbi csupán azt ellenőrzi, létezik-e bejegyzés a megadott azonosítóval, az utóbbi pedig a sortábla elemszámát kérdezi le.
+Az indextáblákon a `find` egyetlen konkrét kulcsra, a `range` pedig egy adott kulcstartományra keres.
+Mivel a `find` valójában egy olyan speciális tartománylekérdezés, amelynek alsó és felső határa megegyezik, a két metódus ugyanazt a közös indexbejárási logikát használja.
+Maga az indexbejárás három egymást követő lépésből áll:
+1. *Azonosítók gyűjtése:* A könyvtár először összegyűjti az indextábla megadott tartományába eső azonosítókat, elsődlegesen a kulcs, azon belül pedig az azonosító szerint rendezve.
+2. *Ismétlődések kiszűrése:* Többértékű mezők esetén ugyanaz a rekord több különböző kulcs alatt is szerepelhet, ezért a duplikátumokat el kell távolítani.
+  A @tbl:tablak. táblázat példájánál maradva egy „a”-tól „e”-ig terjedő tartománylekérdezés a `users.tag` indexen az `admin` és a `dev` kulcs alatt is megtalálja a 3-as rekordot, a végeredményben azonban csak egyszer – a legkisebb kulcsánál – jelenik meg.
+  Egyetlen konkrét kulcson belül a `redb` multimap táblája eleve garantálja az azonosítók egyediségét, így a `find` ezt a szűrési lépést kihagyja.
+3. *Rekordok betöltése:* Végül a könyvtár a kiszűrt azonosítók sorrendjében kiolvassa és deszerializálja a megfelelő sorokat a sortáblából.
+
+Minden lekérdezés egyetlen olvasó tranzakción belül fut le, amely a `redb` pillanatkép-izolációjának (snapshot isolation) köszönhetően az adatbázis egy konzisztens, időben rögzített állapotát látja: a párhuzamosan véglegesített írások nem befolyásolják, és nem is blokkolják az olvasást.
+Emiatt biztosra vehető, hogy az indextábla és a sortábla a teljes bejárás alatt összhangban marad.
+Ha egy indexbejegyzés ennek ellenére nem létező rekordra mutatna, az nem lehet egy egyidejű törlés mellékhatása, hanem kizárólag adatbázis-sérülésre utalhat – ezért a könyvtár ilyenkor azonnal `Corrupt` hibával tér vissza.
+
+A lekérdezések visszatérési értéke minden esetben egy kész `Vec`, nem pedig egy iterátor.
+Egy iterátor visszaadásához ugyanis kölcsönöznie kellene magát az olvasó tranzakciót, ami arra kényszerítené a hívó felet, hogy a találatok feldolgozásának végéig életben tartsa azt – ez pedig a tranzakció élettartam-paraméterét is kivezette volna a publikus API-ra.
+Ennek a tisztább felületnek az ára, hogy a teljes találati lista egyszerre kerül a memóriába, és beépített lapozásra sincs lehetőség.
+A rekordok teljes deszerializálását elkerülő, még hatékonyabb `view*` metódusváltozatokat a következő alfejezet mutatja be.
 
 === Zero-copy olvasás és validálás
 
