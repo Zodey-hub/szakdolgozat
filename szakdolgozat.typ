@@ -798,7 +798,26 @@ A rekordok teljes deszerializálását elkerülő, még hatékonyabb `view*` met
 
 === Zero-copy olvasás és validálás
 
-#todo[a `view*` metódusok lezárásnak adják az archivált rekordot (a referencia nem élheti túl a tranzakciót); az `unaligned` feature-rel a redb lapjáról, másolás nélkül, és ennek ára; minden olvasás ellenőrzi a bájtokat, sérült sorból `Corrupt` hiba lesz memóriahiba helyett; nincs `unsafe`]
+Az eddig bemutatott olvasó metódusok minden egyes találatot teljes, saját tulajdonú rekorddá deszerializálnak – vagyis a benne lévő összes sztringet és vektort új memóriaterületre másolják még akkor is, ha a hívó félnek csupán egyetlen mezőre van szüksége.
+Az `rkyv` könyvtár (@rkyv) lehetővé teszi ennek elkerülését: a tárolt bájtokat közvetlenül, archivált formában (például `ArchivedUser` típusként) is elérhetővé teszi, amelyben egy szöveges mező egyszerű `&str` referenciaként olvasható.
+Ennek kihasználására a `get`, a `find`, a `range` és az `all` metódusok mellett elérhető egy-egy zero-copy változat is (`view`, `view_find`, `view_range`, `view_all`), amelyek teljes deszerializálás helyett közvetlenül az archivált rekordot adják át a hívónak.
+
+Mivel azonban az archivált rekord a `redb` adatbázislapjának nyers bájtjaira mutat, ez a referencia kizárólag addig érvényes, amíg maga az olvasó tranzakció nyitva van.
+A `view*` metódusok ezért egy closure-t várnak paraméterként, amelyet még a nyitott tranzakción belül hívnak meg az archivált rekorddal, így a hívó fél a lezárásból kizárólag azt az értéket adja vissza, amire valóban szüksége van.
+A `db.view::<User, _>(1, |user| user.name.to_string())` hívás például kizárólag a nevet másolja ki a sorból, a rekord többi mezőjét fel sem építi.
+A `view_find`, a `view_range` és a `view_all` metódusok ugyanígy – a hagyományos változatokkal megegyező sorrendben – rekordonként hívják meg a kapott closure-t.
+Az motorháztető alatt mindkét metóduscsalád ugyanarra a három belső függvényre épül: a hagyományos változatok egyszerűen egy olyan closure-t adnak át, amely elvégzi a teljes deszerializálást, így a bejárás logikáját nem kellett duplán implementálni.
+
+Az `rkyv` alapértelmezés szerint megköveteli, hogy az archivált adatok a típusuknak megfelelően igazított memóriacímen helyezkedjenek el, a `redb` viszont az adatbázislap tetszőleges eltolásáról adhatja vissza a sor bájtjait.
+Megfelelő igazítás hiányában minden sort előbb egy igazított pufferbe kellene másolni az olvasás előtt, ami éppen a zero-copy megközelítés lényegét veszítené el.
+Ennek kiküszöbölésére bekapcsoltam az `rkyv` `unaligned` feature-jét, amelynek köszönhetően az archivált típusok bármilyen memóriacímről biztonságosan olvashatók – így a `view` valóban másolás nélkül, közvetlenül a `redb` lapjáról dolgozik.
+Bár a Cargo a függőségek feature-jeit a teljes projektre nézve egyesíti (így ez a beállítás az alkalmazás minden más `rkyv`-használatára is kihat), egy adatbázismotornál ez kifejezetten előnyös: garantálja, hogy a lemezen tárolt fájlformátum rögzített maradjon, és ne függjön a könyvtárat használó program fordítási beállításaitól.
+
+A lemezről beolvasott bájtokban sosem szabad vakon megbízni, hiszen az adatbázisfájl megsérülhet, vagy a rekord struktúrája megváltozhatott a kiírás óta.
+Ellenőrzés nélkül egy hibás belső eltolás vagy egy sérült UTF-8 sztring memóriahibához vezetne, ezért az `rkyv` validáló `access` függvényét használom.
+Ez a `bytecheck` könyvtár segítségével minden olvasáskor megvizsgálja, hogy a nyers bájtsorozat valóban érvényes archivált rekordot alkot-e.
+Hiba esetén a könyvtár a tábla nevét és a sor azonosítóját tartalmazó `Corrupt` hibával tér vissza, így egy sérült rekord kezelhető hibát eredményez, nem pedig nem definiált viselkedést.
+Ennek a biztonságnak azonban ára van: a `view*` metódusok is végigellenőrzik a teljes sort (például minden szöveges mező UTF-8 érvényességét), tehát ezek a hívások sem ingyenesek, csupán a memóriafoglalást és az adatmásolást takarítják meg.
 
 == Sémaváltozás és hibakezelés
 
