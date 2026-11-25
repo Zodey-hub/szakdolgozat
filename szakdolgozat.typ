@@ -250,7 +250,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === Beágyazott adatbázisok és a redb
 
-#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író és párhuzamos olvasók pillanatképpel; név szerinti táblák és multimap táblák); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
+#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író és párhuzamos olvasók pillanatképpel; név szerinti táblák és multimap táblák; a `&[u8]` kulcsok bájtonkénti, lexikografikus összehasonlítása és a rendezett tartománybejárás, erre épül a kulcskódolás); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
 
 === Zero-copy szerializáció és az rkyv
 
@@ -578,62 +578,26 @@ Az `unwrap` ezzel szemben azonnal és egyértelműen jelzi, ha a program egy bel
 A HTTP-szerverhez hasonlóan az adatbázisréteget is önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-database` néven a crates.io-n közzétettem (@tiny-database).
 A könyvtár típusos rekordokat tárol egyetlen fájlban, mindegyiket egy `u64` azonosító alatt, amelyet a hívó választ meg.
 A rekordok az azonosítójuk mellett másodlagos indexeken keresztül is lekérdezhetők: egy index egyenlőségre, értéktartományra és sztringek esetén előtagra is kereshető.
-A tárolást a redb beágyazott kulcs--érték tároló (@redb), a rekordok bájtokká alakítását az rkyv (@rkyv) végzi.
+A tárolást a `redb` beágyazott kulcs--érték tároló (@redb), a rekordok bájtokká alakítását az `rkyv` (@rkyv) végzi.
 
 Szándékosan kimaradt minden, ami egy általános adatbázis-kezelőt jellemez, de egy kis alkalmazáshoz nem szükséges: nincs lekérdezőnyelv, táblák közötti összekapcsolás (join), egyediségi megkötés és sémaverzió sem.
 Ha egy lekérdezés több feltételt tartalmaz, a hívó egy indexből kéri le a jelölteket, a többi feltételt pedig a visszakapott rekordokon ellenőrzi.
 
-A `Database` típus egyetlen mezője a redb adatbázis-objektuma, saját állapota nincs.
-Az író metódusok is csak megosztott referenciát (`&self`) kérnek, a zárolásról pedig a redb gondoskodik: egyszerre csak egy író tranzakció futhat, a többi megvárja annak végét.
+A `Database` típus egyetlen mezője a `redb` adatbázis-objektuma, saját állapota nincs.
+Az író metódusok is csak megosztott referenciát (`&self`) kérnek, mert az író tranzakciók sorba állításáról a `redb` gondoskodik.
 Így a `Database` szálak között `Mutex` nélkül megosztható, és közvetlenül a HTTP-szerver kezelőjének állapotába tehető, amelyet a szerver összes munkaszála párhuzamosan használ.
 
-== A tárolt adatok modellje
+== Rekordok és indexek
 
-=== Rekordok és indexek
+=== A táblák felépítése
 
-Egy tárolható adattípus és az adatbázisréteg közötti szerződést a `Record` trait rögzíti (@lst:record. kódrészlet).
-Ebben a `TABLE` konstans adja meg annak a táblának a nevét, amelybe az adott típus rekordjai kerülnek.
-Azért asszociált konstansként és nem metódusként definiáltam, mert a tábla nevére példányosított rekord nélkül is szükség van: egy `get::<User>(1)` híváskor még nincs kéznél konkrét objektum, a könyvtárnak mégis tudnia kell, honnan olvasson.
-A rekord egyedi azonosítóját az `id` metódus szolgáltatja; ezt mindig a hívó fél választja meg, automatikusan növekvő azonosítókat az adatbázisréteg nem generál.
-Az `index_keys` metódus pedig a rekordhoz tartozó indexbejegyzéseket adja vissza index és kódolt kulcs párok formájában – a kulcsok kódolási elveit a következő alfejezet tárgyalja.
+A `redb` adatbázisfájljában minden rekordtípushoz egy sortábla és indexenként egy-egy indextábla tartozik.
+A sortábla kulcsa a rekord azonosítója, értéke pedig a rekord `rkyv`-vel szerializált bájtjai.
+Az indextáblák neve a sortábla és az index nevéből áll össze, ponttal elválasztva (például `users.name`), és fordított leképezést valósítanak meg: a mező kódolt értékéhez az azt tartalmazó rekordok azonosítóit rendelik.
+Mivel egy érték több rekordban is előfordulhat, az indextáblák a `redb` multimap tábláira épülnek.
 
-#figure(
-  ```rust
-  pub trait Record: Sized + /* rkyv traitek */ {
-      const TABLE: &'static str;
-      type Index: Index;
-
-      fn id(&self) -> u64;
-      fn index_keys(&self) -> Vec<(Self::Index, Vec<u8>)>;
-  }
-
-  pub trait Index {
-      fn name(&self) -> &'static str;
-  }
-  ```,
-  caption: [A `Record` és az `Index` trait (egyszerűsítve)],
-) <lst:record>
-
-Magát a rekordtípust nem a `Database` struktúrán, hanem az egyes műveleteken (`get::<User>`, `insert::<T>`) helyeztem el típusparaméterként.
-Ennek köszönhetően egyetlen adatbázisfájlban többféle rekordtípus is tárolható egymás mellett, a meghívott metódus pedig az adott típus `TABLE` konstansa alapján választja ki a megfelelő táblát.
-
-Az egyedileg definiált indexeket egy `Index` traitet megvalósító enum fogja össze, minden indexhez egy-egy változatot rendelve.
-Ha az indexeket egyszerű karakterláncok azonosítanák, egy elgépelt név csak futásidőben okozna hibát, így viszont az ilyen tévedés már fordítási időben kiszűrhető.
-Ráadásul más rekordtípus indexe sem adható át véletlenül, hiszen például a `find::<User>` hívás kizárólag a `User` saját indextípusát fogadja el.
-Mivel a `redb` motor futásidőben név szerint azonosítja a táblákat, a `name` metódus minden enum-változathoz hozzárendel egy nevet, amelyből a tárolt indextábla neve képződik.
-Ezt a leképezést szándékosan egy kézzel írt `match` kifejezéssel kell megvalósítani, ahelyett, hogy automatikusan a változat nevéből származtatnánk: így egy későbbi átnevezés (refaktorálás) nem változtatja meg észrevétlenül a fájlban tárolt táblanevet.
-A `match` kimerítő vizsgálata pedig garantálja, hogy egyetlen új indexváltozat sem maradhat név nélkül.
-Az indexet nem használó rekordtípusokhoz a könyvtár egy előre definiált, változatok nélküli `NoIndex` típust biztosít.
-
-A `redb` adatbázisfájljában minden rekordtípushoz egy elsődleges sortábla, valamint indexenként egy-egy külön indextábla tartozik.
-A sortábla nevét a `TABLE` konstans határozza meg: a kulcs a rekord egyedi azonosítója, az érték pedig maga a rekord az `rkyv` által szerializált bájtformátumban.
-Az indextáblák neve a sortábla és az adott index nevéből áll össze, egy ponttal elválasztva (például `users.name`), és fordított leképezést valósítanak meg: a mező kódolt értékéhez rendelik hozzá az azt tartalmazó rekordok azonosítóit.
-Mivel egy érték több rekordban is előfordulhat, az indextáblák a `redb` multimap tábláira épülnek, amelyekben egyetlen kulcshoz azonosítók halmaza tartozik.
-A pont elválasztó szerepe miatt sem a tábla, sem az index neve nem tartalmazhat pont karaktert, különben két eltérő index táblája névütközést okozhatna.
-Ennek megelőzésére a könyvtár a táblanevet már fordítási időben ellenőrzi, az index nevét pedig futásidőben, annak első használatakor validálja.
-
-A @tbl:tablak. táblázat egy `User` típus négy rekordját szemlélteti, a név, az életkor és a címkék szerinti indexekkel együtt.
-Egy indexelt lekérdezés mindig két lépésben zajlik: először a könyvtár kikeresi a kulcshoz tartozó azonosítókat az indextáblából, majd ezek alapján betölti magukat a rekordokat a sortáblából.
+A @tbl:tablak. táblázat egy `User` típus négy rekordját mutatja a név, az életkor és a címkék szerinti indexekkel.
+Egy indexelt lekérdezés két lépésben zajlik: a könyvtár először az indextáblából kikeresi a kulcshoz tartozó azonosítókat, majd ezek alapján a sortáblából betölti a rekordokat.
 
 #figure(
   stack(
@@ -672,18 +636,88 @@ Egy indexelt lekérdezés mindig két lépésben zajlik: először a könyvtár 
       ),
     ),
   ),
-  caption: [Négy rekord a sortáblában és a három indextábla (a kulcsok a kódolás előtti értékükkel)],
+  placement: auto,
+  caption: [Négy rekord a sortáblában és három indextáblájuk (a kulcsok a kódolás előtti értékükkel)],
 ) <tbl:tablak>
 
-=== Rendezéstartó kulcskódolás
+=== A `Record` trait
+
+Egy tárolható típus és az adatbázisréteg közötti szerződést a `Record` trait rögzíti. A @lst:user. kódrészlet a @tbl:tablak. táblázat `User` típusának megvalósítását mutatja.
+A `TABLE` konstans a sortábla nevét adja meg.
+Azért asszociált konstans és nem metódus, mert a tábla nevére példány nélkül is szükség van: egy `get::<User>(1)` hívásnál még nincs rekord, a könyvtárnak mégis tudnia kell, honnan olvasson.
+Az `id` a rekord azonosítóját adja vissza; ezt mindig a hívó választja meg, automatikusan növekvő azonosítót a könyvtár nem generál.
+Az `index_keys` a rekord indexbejegyzéseit adja vissza index és kódolt kulcs párokként, egy többértékű mező (mint a címkék) minden értékéhez egy-egy párt.
+A kulcsok kódolását a következő alfejezet tárgyalja.
+A trait szupertraitjei az `rkyv` szerializáló és validáló traitjei, ezeket a `derive` makró adja.
+
+#figure(
+  ```rust
+  #[derive(Archive, Serialize, Deserialize)]
+  struct User { id: u64, name: String, age: u8, tags: Vec<String> }
+
+  enum UserIndex { Name, Age, Tag, NameAge }
+
+  impl Index for UserIndex {
+      fn name(&self) -> &'static str {
+          match self {
+              Self::Name => "name",
+              Self::Age => "age",
+              Self::Tag => "tag",
+              Self::NameAge => "name_age",
+          }
+      }
+  }
+
+  impl Record for User {
+      const TABLE: &'static str = "users";
+      type Index = UserIndex;
+
+      fn id(&self) -> u64 { self.id }
+
+      fn index_keys(&self) -> Vec<(UserIndex, Vec<u8>)> {
+          let mut keys = vec![
+              (UserIndex::Name, key::enc(&self.name)),
+              (UserIndex::Age, key::enc(self.age)),
+              (UserIndex::NameAge, key::enc((&self.name, self.age))),
+          ];
+          for tag in &self.tags {
+              keys.push((UserIndex::Tag, key::enc(tag)));
+          }
+          keys
+      }
+  }
+  ```,
+  placement: auto,
+  caption: [A `User` rekordtípus és indexei],
+) <lst:user>
+
+Magát a rekordtípust nem a `Database` struktúrán, hanem az egyes műveleteken (`get::<User>`, `insert::<T>`) helyeztem el típusparaméterként.
+Így egy adatbázisfájlban többféle rekordtípus is tárolható, és minden művelet a típus `TABLE` konstansa alapján választja ki a táblát.
+
+=== Az indexek típusa
+
+Egy típus indexeit egy `Index` traitet megvalósító enum fogja össze, indexenként egy változattal.
+Ha az indexeket sztringek azonosítanák, egy elgépelt név csak futásidőben derülne ki, így viszont fordítási hibát okoz.
+Más rekordtípus indexe sem adható át véletlenül: a `find::<User>` csak a `User` saját indextípusát fogadja el.
+Mivel a `redb` a táblákat név szerint azonosítja, az `Index` trait `name` metódusa minden változathoz nevet rendel, és ebből képződik az indextábla neve.
+Ezt szándékosan kézzel írt `match` adja, és nem a változat nevéből származik: így egy átnevezés a kódban nem változtatja meg észrevétlenül a fájlban tárolt táblanevet, a `match` kimerítő vizsgálata pedig garantálja, hogy új változat sem maradhat név nélkül.
+Az index nélküli típusokhoz a könyvtár egy változatok nélküli `NoIndex` enumot ad.
+
+A pont elválasztó szerepe miatt sem a tábla, sem az index neve nem tartalmazhat pontot, különben két különböző index táblája azonos nevet kaphatna.
+A táblanevet a könyvtár fordítási időben ellenőrzi, az index nevét futásidőben, minden használatkor, így egy hibás név már az első használatkor `InvalidIndexName` hibát ad.
+
+== Rendezéstartó kulcskódolás
 
 Az indextáblák kulcsai nyers bájtsorozatok, amelyeket a `redb` bájtról bájtra, balról jobbra haladva hasonlít össze.
 Egyenlőségkereséshez elég lenne, ha azonos érték mindig azonos bájtokat adna, a tartománylekérdezés viszont az indextábla egy összefüggő szakaszát járja be, ezért a bájtok sorrendjének meg kell egyeznie az értékek természetes sorrendjével.
 A rekordok `rkyv`-vel szerializált bájtjai ezt nem teljesítik, ezért a kulcsokat a `key` modul `enc` függvénye külön kódolja; ezt használja az `index_keys` metódus és a lekérdezések is.
+A kódolás a fájlformátum része, így bármilyen későbbi módosítása érvénytelenítené a meglévő indextáblákat.
 
-Az egész számok natív – a legtöbb architektúrán _little-endian_ – ábrázolása önmagában nem rendezéstartó, mivel ebben a legkisebb helyiértékű bájt áll elöl.
-A @tbl:endian. táblázat bal oldalán látható, hogy egy `u16` mező 18, 256 és 300 értékei a natív bájtjaik alapján 256, 18, 300 sorrendbe kerülnének, így egy 0 és 100 közötti tartománylekérdezés mindhárom rekordot visszaadná (a határok natív bájtjai `00 00` és `64 00`, és mindhárom kulcs e kettő közé esik).
-Az `enc` ezért az előjel nélküli egészeket _big-endian_ sorrendben kódolja, ahol a legnagyobb helyiértékű bájt kerül előre, így a bájtok sorrendje megegyezik a számok nagyságrendjével.
+=== Számok
+
+Az egész számok natív -- a legtöbb architektúrán little-endian -- ábrázolása önmagában nem rendezéstartó, mivel ebben a legkisebb helyiértékű bájt áll elöl.
+A @tbl:endian. táblázat bal oldalán látható, hogy egy `u16` mező 18, 256 és 300 értékei a natív bájtjaik alapján 256, 18, 300 sorrendbe kerülnének, így egy 0 és 100 közötti tartománylekérdezés mindhárom rekordot visszaadná.
+Az `enc` ezért az előjel nélküli egészeket big-endian sorrendben kódolja, ahol a legnagyobb helyiértékű bájt kerül előre, így a bájtok sorrendje megegyezik a számok nagyságrendjével.
 #figure(
   table(
     columns: 4,
@@ -696,33 +730,48 @@ Az `enc` ezért az előjel nélküli egészeket _big-endian_ sorrendben kódolja
 ) <tbl:endian>
 
 Az előjeles egészeknél a kettes komplemens ábrázolás jelent akadályt: mivel a negatív számok legfelső bitje 1, bájtként összehasonlítva a pozitív számok mögé kerülnének.
-Ennek kiküszöbölésére az `enc` a _big-endian_ bájtokban megfordítja az előjelbitet, így például a `-1i8` kódja `7F`, a `0i8` kódja pedig `80` lesz.
+Ennek kiküszöbölésére az `enc` a big-endian bájtokban megfordítja az előjelbitet, így például a `-1i8` kódja `7F`, a `0i8` kódja pedig `80` lesz.
 A lebegőpontos számoknál más a gond: az IEEE 754 előjelbitből és abszolút értékből álló ábrázolásában a pozitív számok bitmintái már helyes sorrendben vannak, a negatívaké viszont fordítottban, mert ott a nagyobb abszolút értékhez nagyobb bitminta tartozik.
 Ezért pozitív számnál csak az előjelbitet fordítom meg, negatívnál az összes bitet, így a negatív számok a pozitívak elé, egymás között pedig helyes sorrendbe kerülnek.
 
-A kódolás hossza és formátuma szigorúan a típustól függ: az `enc(18u8)` egyetlen bájtot, míg az `enc(18u32)` négy bájtot eredményez.
+A kódolás hossza és formátuma a típustól függ: az `enc(18u8)` egyetlen bájtot, míg az `enc(18u32)` négy bájtot eredményez.
 Ha az `index_keys` és a lekérdezés eltérő típusként kódolja ugyanazt az értéket, a keresés hibaüzenet nélkül üres eredménnyel tér vissza, ezért a számliterálokat mindig típusutótaggal kell írni (`18u8`).
+A `usize` és az `isize` típusokhoz szándékosan nem tartozik kódolás: a méretük platformfüggő, így egy 64 bites rendszeren írt adatbázisfájl kulcsai egy 32 bites gépen nem egyeznének az újonnan kódoltakkal.
+
+=== Sztringek
 
 A sztringek és a bájtszeletek változó hosszúságúak, ezért a kódolásuknak azt is jeleznie kell, hol érnek véget.
-Erre akkor van szükség, ha egy összetett kulcs több egymás után fűzött mezőből áll: végjel nélkül például a `("a", "bc")` és az `("ab", "c")` pár pontosan ugyanazt a bájtsorozatot adná.
+Erre akkor van szükség, ha egy összetett kulcs több egymás után fűzött mezőből áll: végjel nélkül például a `("a", "bc")` és az `("ab", "c")` pár ugyanazt a `61 62 63` bájtsorozatot adná.
 A hossz előreírása sem megoldás, mert akkor az határozná meg a rendezést, így a `"b"` az `"ab"` elé kerülne.
 Az `enc` ezért minden sztring végére `00 01` lezárót ír.
-A `00` a legkisebb bájtérték, így a rövidebb szó mindig megelőzi a folytatását (az `"a"` az `"ab"` elé kerül).
+A `00` a legkisebb bájtérték, így a rövidebb sztring mindig megelőzi a folytatását (az `"a"` az `"ab"` elé kerül).
 Egy Rust-sztring viszont maga is tartalmazhat `00` bájtot, amely hamis végjelnek látszana, ezért ezeket `00 FF` sorozatra cserélem.
 A `00` után így mindig a következő bájt dönti el, hogy a sztring véget ért (`01`), vagy valódi nulla bájt következik (`FF`).
-Mivel a `01` kisebb az `FF`-nél, a lezárt sztring itt is a folytatódó elé kerül.
+Mivel a `01` kisebb az `FF`-nél, a lezárt sztring itt is a folytatódó elé kerül (@tbl:sztring. táblázat).
+
+#figure(
+  table(
+    columns: 2,
+    table.header[Érték][`enc` bájtjai],
+    [`"a"`], [`61 00 01`],
+    [`"a\0"`], [`61 00 FF 00 01`],
+    [`"ab"`], [`61 62 00 01`],
+    [`"b"`], [`62 00 01`],
+  ),
+  caption: [Sztringek kódolása a bájtjaik szerint rendezve],
+) <tbl:sztring>
+
+=== Összetett kulcsok és előtagok
 
 Mivel a számok kódolása rögzített hosszúságú, a sztringeké pedig végjellel zárul, egyetlen érték kódolása sem lehet egy másik, azonos típusú érték kódolásának előtagja.
-Ezért több mező kódolása egyszerűen egymás után fűzhető, és a bájtsorozatból mindig kiderül, hol ér véget az egyik mező.
-Az `enc` legfeljebb négyelemű tuple típusokat is elfogad, és a tagok kódolását összefűzve összetett kulcsot képez.
+Ezért több mező kódolása egyszerűen egymás után fűzhető: az `enc` legfeljebb négyelemű tuple-öket is elfogad, és a tagok kódolását összefűzve összetett kulcsot képez.
+Az `("Alice", 30u8)` kódja például `41 6C 69 63 65 00 01 1E`, amelyben a név lezárója után közvetlenül az életkor bájtja áll.
 Egy ilyen index először az első, azon belül a második mező szerint rendezett, és egy tartománylekérdezés ebben a sorrendben járja be a két határ közötti kulcsokat (@lst:osszetett. kódrészlet).
 Ha az első mező mindkét határon azonos, a lekérdezés egy név rekordjait szűri életkor szerint.
 Ha eltér, a két határ közötti összes kulcsot visszaadja, név, azon belül életkor szerint rendezve.
 
 #figure(
   ```rust
-  // index_keys: (UserIndex::NameAge, key::enc((&self.name, self.age)))
-
   // "Alice", 18 és 30 év között
   let range = key::enc(("Alice", 18u8))..=key::enc(("Alice", 30u8));
   db.range::<User>(UserIndex::NameAge, range)?;
@@ -736,112 +785,132 @@ Ha eltér, a két határ közötti összes kulcsot visszaadja, név, azon belül
   let range = key::enc(("Alice", 18u8))..=key::enc(("Carol", 30u8));
   db.range::<User>(UserIndex::NameAge, range)?;
   ```,
-  caption: [Lekérdezések egy (név, életkor) összetett indexen],
+  caption: [Lekérdezések a `NameAge` összetett indexen],
 ) <lst:osszetett>
 
 A sztringek kódolási módja az előtagra történő keresést is lehetővé teszi, amelyet a `prefix_range` függvény valósít meg.
-A keresési tartomány alsó határa maga a kódolt előtag lezáró végjel nélkül, a felső határa pedig ugyanez egy `FF` bájttal kiegészítve.
-Egy ilyen előtaggal kezdődő sztring kódolásában az előtag után UTF-8 bájt, kódolt nulla bájt (`00 FF`) vagy lezáró végjel (`00 01`) következik.
-Ezek első bájtja mind kisebb az `FF`-nél, amely érvényes UTF-8 szövegben sosem fordul elő.
-Így például a `prefix_range("Al")` tartományba az `"Al"` és az `"Alice"` kódolása beleesik, míg a `"Bob"` vagy az `"A"` kódolása már kívül esik rajta.
+A tartomány alsó határa a kódolt előtag lezáró nélkül, a felső határa pedig ugyanez egy `FF` bájttal kiegészítve: a `prefix_range("Al")` például a `41 6C`-tól a `41 6C FF`-ig tart, az utóbbit már nem tartalmazva.
+Egy ilyen előtaggal kezdődő sztring kódolásában az előtag után UTF-8 bájt, kódolt nulla bájt (`00 FF`) vagy lezáró (`00 01`) következik.
+Ezek első bájtja mind kisebb az `FF`-nél, amely érvényes UTF-8 szövegben sosem fordul elő, így a tartományba az `"Al"` és az `"Alice"` kódolása beleesik, a `"Bob"` és az `"A"` kódolása viszont nem.
 
-A kulcskódolás a fájlformátum része, így bármilyen későbbi módosítása érvénytelenítené a már meglévő indextáblákat.
-Ugyanezért a `usize` és az `isize` típusokhoz szándékosan nem tartozik kódolás: a méretük platformfüggő, így egy 64 bites rendszeren írt adatbázisfájl kulcsai egy 32 bites gépen nem egyeznének az újonnan generáltakkal.
+== Írás és törlés <sec:iras>
 
-== Írás és törlés
+=== Tranzakciók
 
-Rekordokat az `insert` és az `insert_many` metódusokkal lehet az adatbázisba menteni: az előbbi egyetlen példányt, az utóbbi pedig tetszőleges számú rekordot ír ki egyetlen tranzakción belül.
-Maga az `insert` valójában csak egy egyelemű listával hívja meg az `insert_many` függvényt, így a beszúrás teljes logikája egyetlen helyen összpontosul.
-Külön frissítő művelet (update) nincs: ha a megadott azonosító már foglalt, az új rekord egyszerűen felülírja a korábbit.
+Rekordokat az `insert` és az `insert_many` metódussal lehet menteni: az előbbi egy rekordot, az utóbbi tetszőleges számút ír ki egyetlen tranzakcióban, az indexbejegyzéseikkel együtt.
+Az `insert` csak egy egyelemű tömbbel hívja meg az `insert_many`-t, így a beszúrás logikája egy helyen van.
+Külön frissítő művelet (update) nincs: ha az azonosító már foglalt, az új rekord felülírja a régit.
+Törölni a `delete` és a `delete_many` metódussal lehet, az utóbbi azt is visszaadja, hogy a megadott azonosítók közül hány létezett.
 
 Az `insert_many` létjogosultságát a tranzakciók lezárásának költsége adja.
-A `redb` a `commit` hívásakor lemezre szinkronizálja az adatbázisfájlt, hogy a véglegesített adatok egy váratlan áramszünetet is túléljenek – ez pedig az írási folyamat messze leglassabb lépése.
-Ha a hívó fél sok rekordot egyesével szúr be, minden egyes művelet után külön lemezszinkronizálás történik, az `insert_many` viszont az egész köteget egyetlen `commit` hívással véglegesíti.
+A `redb` a `commit` hívásakor lemezre szinkronizálja a fájlt, hogy a véglegesített adatok egy áramszünetet is túléljenek, és ez az írás leglassabb lépése.
+Ha a hívó sok rekordot egyesével szúr be, minden rekord után külön szinkronizálás történik, az `insert_many` viszont az egész köteget egyetlen `commit` hívással véglegesíti.
 
-Minden író metódus pontosan egy író tranzakciót nyit, így a módosítások vagy hiánytalanul érvényre jutnak, vagy egyik sem lép életbe.
-Ehhez nem volt szükség külön rollback logika megírására: ha bármelyik részművelet hibát ad, a `?` operátor még a `commit` előtt kilép a függvényből, a tranzakciós objektum véglegesítés nélkül megsemmisül, a `redb` pedig automatikusan eldobja a függőben lévő módosításokat.
-Ennek köszönhetően az adatbázisban sosem maradhat olyan rekord, amelyhez hiányoznak az indexbejegyzések, ahogyan egy félbeszakadt `insert_many` sem hagyhat maga után részleges állapotot.
+Minden író metódus pontosan egy író tranzakciót nyit, így a módosítások vagy mind érvényre jutnak, vagy egyik sem.
+Ehhez nem kellett külön visszagörgetést (rollback) írni: ha egy részművelet hibát ad, a `?` operátor még a `commit` előtt kilép a függvényből, a tranzakció véglegesítés nélkül megsemmisül, és a `redb` eldobja a függőben lévő módosításokat.
+Így a fájlban nem maradhat indexbejegyzések nélküli rekord, és egy félbeszakadt `insert_many` sem hagy maga után részleges állapotot.
 
-Felülíráskor természetesen a kapcsolódó indexeket is naprakészen kell tartani.
-Ha a könyvtár csupán a sortábla bejegyzését cserélné le, egy névváltoztatás után a `users.name` táblában a régi név alatt is ott maradna a rekord azonosítója, így a későbbi keresések hibás találatot adnának.
-Mivel a régi rekord indexbejegyzéseit sehol nem tárolom külön, a könyvtár felülírás előtt kiolvassa és dekódolja a meglévő rekordot, majd annak `index_keys` metódusából állapítja meg, milyen kulcsok tartoztak hozzá.
-Ezután összeveti a régi és az új kulcslistát, és kizárólag a különbségeket hajtja végre: a csak a régiben szereplő bejegyzéseket törli, az újonnan megjelenőket beszúrja, a közös elemeket pedig érintetlenül hagyja.
-Mivel egy módosítás jellemzően csak egy-két mezőt érint, az indextáblák nagy része változatlan marad – ha például a @tbl:tablak. táblázat 1-es rekordjában csak az életkor módosul 30-ról 31-re, a `users.age` táblában egyetlen bejegyzés törlődik és egy új keletkezik, miközben a `users.name` és a `users.tag` táblákhoz hozzá sem kell nyúlni.
+=== Az indexek frissítése
 
-A rekordok eltávolítása a `delete` és a `delete_many` metódusokkal ugyanígy egyetlen tranzakcióban zajlik, a visszatérési érték pedig megadja, hogy a megadott azonosítók közül hány létezett ténylegesen az adatbázisban.
-A törléshez szintén ki kell olvasni és dekódolni kell a régi rekordot, hiszen kizárólag az `index_keys` metódusból derül ki, mely indexbejegyzéseket kell eltávolítani mellőle.
-Ennek a kialakításnak két fontos következménye van: egyrészt minden felülírás és törlés egy előzetes olvasással és dekódolással is jár, másrészt egy esetlegesen megsérült sort a publikus API-n keresztül sem felülírni, sem törölni nem lehet, mivel a dekódolása azonnal `Corrupt` hibát vált ki.
+Felülíráskor az indexeket is naprakészen kell tartani.
+Ha a könyvtár csak a sortábla bejegyzését cserélné le, egy névváltozás után a `users.name` táblában a régi név alatt is ott maradna a rekord azonosítója, és a keresések hibás találatot adnának.
+A régi rekord indexbejegyzéseit sehol nem tárolom külön: a `redb` beszúráskor visszaadja a felülírt sort, a könyvtár ezt dekódolja, és az `index_keys` metódusából állapítja meg a régi kulcsokat.
+Ezután összeveti a régi és az új kulcslistát, és csak a különbséget hajtja végre: a csak a régiben szereplő bejegyzéseket törli, az újakat beszúrja, a közöseket érintetlenül hagyja.
+Mivel egy módosítás jellemzően egy-két mezőt érint, az indextáblák nagy része változatlan marad.
+Ha például a @tbl:tablak. táblázat 1-es rekordjában az életkor 30-ról 31-re változik, a `users.age` és a `users.name_age` táblában egy-egy bejegyzés törlődik és egy új keletkezik, a `users.name` és a `users.tag` táblához pedig hozzá sem kell nyúlni.
+
+Törléskor ugyanígy a törölt sort kell dekódolni, mert csak az `index_keys` metódusából derül ki, mely indexbejegyzéseket kell vele együtt eltávolítani.
+Ennek két következménye van: egyrészt minden felülírás és törlés a régi rekord validálásával és deszerializálásával jár, másrészt egy megsérült sort a publikus API-n keresztül sem felülírni, sem törölni nem lehet, mert a dekódolása `Corrupt` hibát ad.
 
 == Olvasás
 
 === Lekérdezések
 
-Az olvasó műveletek közül a `get` egyedi azonosító alapján kér le egyetlen rekordot, míg az `all` az adott típus összes tárolt példányát adja vissza, azonosító szerint növekvő sorrendben.
-A `contains` és a `count` metódusok a rekordok tényleges betöltése nélkül adnak választ: az előbbi csupán azt ellenőrzi, létezik-e bejegyzés a megadott azonosítóval, az utóbbi pedig a sortábla elemszámát kérdezi le.
-Az indextáblákon a `find` egyetlen konkrét kulcsra, a `range` pedig egy adott kulcstartományra keres.
-Mivel a `find` valójában egy olyan speciális tartománylekérdezés, amelynek alsó és felső határa megegyezik, a két metódus ugyanazt a közös indexbejárási logikát használja.
-Maga az indexbejárás három egymást követő lépésből áll:
-1. *Azonosítók gyűjtése:* A könyvtár először összegyűjti az indextábla megadott tartományába eső azonosítókat, elsődlegesen a kulcs, azon belül pedig az azonosító szerint rendezve.
-2. *Ismétlődések kiszűrése:* Többértékű mezők esetén ugyanaz a rekord több különböző kulcs alatt is szerepelhet, ezért a duplikátumokat el kell távolítani.
-  A @tbl:tablak. táblázat példájánál maradva egy „a”-tól „e”-ig terjedő tartománylekérdezés a `users.tag` indexen az `admin` és a `dev` kulcs alatt is megtalálja a 3-as rekordot, a végeredményben azonban csak egyszer – a legkisebb kulcsánál – jelenik meg.
-  Egyetlen konkrét kulcson belül a `redb` multimap táblája eleve garantálja az azonosítók egyediségét, így a `find` ezt a szűrési lépést kihagyja.
-3. *Rekordok betöltése:* Végül a könyvtár a kiszűrt azonosítók sorrendjében kiolvassa és deszerializálja a megfelelő sorokat a sortáblából.
+Az olvasó műveletek közül a `get` azonosító alapján kér le egy rekordot, az `all` pedig a típus összes rekordját adja vissza, azonosító szerint növekvő sorrendben.
+A `contains` és a `count` a rekordok betöltése nélkül válaszol: az előbbi azt ellenőrzi, létezik-e sor a megadott azonosítóval, az utóbbi a sortábla elemszámát kérdezi le.
+Az indextáblákon a `find` egy kulcsra, a `range` egy kulcstartományra keres.
+A `find` valójában olyan tartománylekérdezés, amelynek alsó és felső határa megegyezik, ezért a két metódus ugyanazt az indexbejárást használja, amely három lépésből áll:
+1. *Azonosítók gyűjtése:* A könyvtár összegyűjti az indextábla megadott tartományába eső azonosítókat, elsődlegesen a kulcs, azon belül az azonosító szerint rendezve.
+2. *Ismétlődések kiszűrése:* Többértékű mezőknél ugyanaz a rekord több kulcs alatt is szerepelhet, ezért a duplikátumokat el kell távolítani.
+  A @tbl:tablak. táblázat példájánál maradva egy „a”-tól „e”-ig terjedő tartománylekérdezés a `users.tag` indexen az `admin` és a `dev` kulcs alatt is megtalálja a 3-as rekordot, a végeredményben azonban csak egyszer, a legkisebb kulcsánál jelenik meg.
+  Egyetlen kulcson belül a `redb` multimap táblája eleve garantálja az azonosítók egyediségét, ezért a `find` ezt a lépést kihagyja.
+3. *Rekordok betöltése:* A könyvtár a megmaradt azonosítók sorrendjében kiolvassa és deszerializálja a sorokat a sortáblából.
 
-Minden lekérdezés egyetlen olvasó tranzakción belül fut le, amely a `redb` pillanatkép-izolációjának (snapshot isolation) köszönhetően az adatbázis egy konzisztens, időben rögzített állapotát látja: a párhuzamosan véglegesített írások nem befolyásolják, és nem is blokkolják az olvasást.
-Emiatt biztosra vehető, hogy az indextábla és a sortábla a teljes bejárás alatt összhangban marad.
-Ha egy indexbejegyzés ennek ellenére nem létező rekordra mutatna, az nem lehet egy egyidejű törlés mellékhatása, hanem kizárólag adatbázis-sérülésre utalhat – ezért a könyvtár ilyenkor azonnal `Corrupt` hibával tér vissza.
+Minden lekérdezés egyetlen olvasó tranzakcióban fut, amely a `redb` pillanatkép-izolációja miatt az adatbázis egy rögzített állapotát látja, így az indextábla és a sortábla a bejárás alatt végig összhangban van.
+Ha egy indexbejegyzés ennek ellenére nem létező rekordra mutat, az nem egy egyidejű törlés következménye, hanem sérült fájlé vagy elmaradt index-újraépítésé (lásd a @sec:sema alfejezetet), ezért a könyvtár ilyenkor `Corrupt` hibát ad.
 
-A lekérdezések visszatérési értéke minden esetben egy kész `Vec`, nem pedig egy iterátor.
-Egy iterátor visszaadásához ugyanis kölcsönöznie kellene magát az olvasó tranzakciót, ami arra kényszerítené a hívó felet, hogy a találatok feldolgozásának végéig életben tartsa azt – ez pedig a tranzakció élettartam-paraméterét is kivezette volna a publikus API-ra.
-Ennek a tisztább felületnek az ára, hogy a teljes találati lista egyszerre kerül a memóriába, és beépített lapozásra sincs lehetőség.
-A rekordok teljes deszerializálását elkerülő, még hatékonyabb `view*` metódusváltozatokat a következő alfejezet mutatja be.
+A lekérdezések egy kész `Vec`-et adnak vissza, nem iterátort.
+Egy iterátornak ugyanis kölcsönöznie kellene az olvasó tranzakciót, így a hívónak a feldolgozás végéig életben kellene tartania azt, és a tranzakció élettartam-paramétere a publikus API-ban is megjelenne.
+Ennek ára, hogy a teljes találati lista egyszerre kerül a memóriába, és beépített lapozás sincs.
 
-=== Zero-copy olvasás és validálás
+=== Zero-copy olvasás
 
-Az eddig bemutatott olvasó metódusok minden egyes találatot teljes, saját tulajdonú rekorddá deszerializálnak – vagyis a benne lévő összes sztringet és vektort új memóriaterületre másolják még akkor is, ha a hívó félnek csupán egyetlen mezőre van szüksége.
-Az `rkyv` könyvtár (@rkyv) lehetővé teszi ennek elkerülését: a tárolt bájtokat közvetlenül, archivált formában (például `ArchivedUser` típusként) is elérhetővé teszi, amelyben egy szöveges mező egyszerű `&str` referenciaként olvasható.
-Ennek kihasználására a `get`, a `find`, a `range` és az `all` metódusok mellett elérhető egy-egy zero-copy változat is (`view`, `view_find`, `view_range`, `view_all`), amelyek teljes deszerializálás helyett közvetlenül az archivált rekordot adják át a hívónak.
+Az eddigi olvasó metódusok minden találatot saját tulajdonú rekorddá deszerializálnak, vagyis minden sztringjét és vektorát új memóriaterületre másolják akkor is, ha a hívónak csak egy mezőre van szüksége.
+Az `rkyv` ezt elkerülhetővé teszi: a tárolt bájtok archivált formában (például `ArchivedUser` típusként) közvetlenül olvashatók, és ebben egy sztring mező `&str`-ként érhető el.
+Ezért a `get`, a `find`, a `range` és az `all` mellett mindegyiknek van egy zero-copy változata is (`view`, `view_find`, `view_range`, `view_all`), amely az archivált rekordot adja át a hívónak (@tbl:view. táblázat).
 
-Mivel azonban az archivált rekord a `redb` adatbázislapjának nyers bájtjaira mutat, ez a referencia kizárólag addig érvényes, amíg maga az olvasó tranzakció nyitva van.
-A `view*` metódusok ezért egy closure-t várnak paraméterként, amelyet még a nyitott tranzakción belül hívnak meg az archivált rekorddal, így a hívó fél a lezárásból kizárólag azt az értéket adja vissza, amire valóban szüksége van.
-A `db.view::<User, _>(1, |user| user.name.to_string())` hívás például kizárólag a nevet másolja ki a sorból, a rekord többi mezőjét fel sem építi.
-A `view_find`, a `view_range` és a `view_all` metódusok ugyanígy – a hagyományos változatokkal megegyező sorrendben – rekordonként hívják meg a kapott closure-t.
-Az motorháztető alatt mindkét metóduscsalád ugyanarra a három belső függvényre épül: a hagyományos változatok egyszerűen egy olyan closure-t adnak át, amely elvégzi a teljes deszerializálást, így a bejárás logikáját nem kellett duplán implementálni.
+Az archivált rekord a `redb` lapjának bájtjaira mutat, ezért csak addig érvényes, amíg az olvasó tranzakció nyitva van.
+A `view*` metódusok ezért egy closure-t várnak, és azt még a nyitott tranzakción belül hívják meg az archivált rekorddal.
+A `view` a closure visszatérési értékét adja vissza: a `db.view::<User, _>(1, |user| user.name.to_string())` hívás csak a nevet másolja ki a sorból, a többi mezőt fel sem építi.
+A `view_find`, a `view_range` és a `view_all` a hagyományos változatokkal azonos sorrendben, rekordonként hívja meg a closure-t, amelynek nincs visszatérési értéke, így az eredményt a hívó egy saját változóba gyűjti:
 
-Az `rkyv` alapértelmezés szerint megköveteli, hogy az archivált adatok a típusuknak megfelelően igazított memóriacímen helyezkedjenek el, a `redb` viszont az adatbázislap tetszőleges eltolásáról adhatja vissza a sor bájtjait.
-Megfelelő igazítás hiányában minden sort előbb egy igazított pufferbe kellene másolni az olvasás előtt, ami éppen a zero-copy megközelítés lényegét veszítené el.
-Ennek kiküszöbölésére bekapcsoltam az `rkyv` `unaligned` feature-jét, amelynek köszönhetően az archivált típusok bármilyen memóriacímről biztonságosan olvashatók – így a `view` valóban másolás nélkül, közvetlenül a `redb` lapjáról dolgozik.
-Bár a Cargo a függőségek feature-jeit a teljes projektre nézve egyesíti (így ez a beállítás az alkalmazás minden más `rkyv`-használatára is kihat), egy adatbázismotornál ez kifejezetten előnyös: garantálja, hogy a lemezen tárolt fájlformátum rögzített maradjon, és ne függjön a könyvtárat használó program fordítási beállításaitól.
+```rust
+let mut names = Vec::new();
+db.view_all::<User>(|user| names.push(user.name.to_string()))?;
+```
 
-A lemezről beolvasott bájtokban sosem szabad vakon megbízni, hiszen az adatbázisfájl megsérülhet, vagy a rekord struktúrája megváltozhatott a kiírás óta.
-Ellenőrzés nélkül egy hibás belső eltolás vagy egy sérült UTF-8 sztring memóriahibához vezetne, ezért az `rkyv` validáló `access` függvényét használom.
-Ez a `bytecheck` könyvtár segítségével minden olvasáskor megvizsgálja, hogy a nyers bájtsorozat valóban érvényes archivált rekordot alkot-e.
-Hiba esetén a könyvtár a tábla nevét és a sor azonosítóját tartalmazó `Corrupt` hibával tér vissza, így egy sérült rekord kezelhető hibát eredményez, nem pedig nem definiált viselkedést.
-Ennek a biztonságnak azonban ára van: a `view*` metódusok is végigellenőrzik a teljes sort (például minden szöveges mező UTF-8 érvényességét), tehát ezek a hívások sem ingyenesek, csupán a memóriafoglalást és az adatmásolást takarítják meg.
+Belül mindkét metóduscsalád ugyanarra a három függvényre épül (`read_row`, `scan_index`, `scan_rows`): a hagyományos változatok egy olyan closure-t adnak át, amely a teljes deszerializálást végzi, így a bejárás logikája csak egyszer szerepel a kódban.
 
-== Sémaváltozás és hibakezelés
+#figure(
+  table(
+    columns: 3,
+    table.header[][`get`, `find`, `range`, `all`][`view`, `view_*`],
+    [Eredmény], [saját tulajdonú rekordok], [a closure által kimásolt értékek],
+    [Validálás], [igen], [igen],
+    [Másolás, foglalás], [minden mező], [csak amit a closure kimásol],
+    [A rekord élettartama], [független a tranzakciótól], [csak a closure-ön belül],
+  ),
+  caption: [A hagyományos és a zero-copy olvasás összehasonlítása],
+) <tbl:view>
 
-Mivel a könyvtár nem tárol automatikus sémaverziót, az adatstruktúra megváltozását a hívó félnek kell jeleznie; erre két dedikált metódus szolgál.
-Ha csupán az `index_keys` logikája módosul – például egy új index kerül a rekordtípusba –, a meglévő indextáblák még a régi kulcsokat tartalmazzák.
-Ilyenkor a `rebuild_indexes` metódust kell meghívni, amely egyetlen tranzakción belül eldobja az adott típus összes indextábláját, majd a tárolt rekordokból újraépíti őket.
-Ezt mindenképpen az adott típuson végzett további írási műveletek előtt kell végrehajtani, mivel a felülírás és a törlés a régi bejegyzéseket az aktuális `index_keys` alapján keresi meg (lásd az „Írás és törlés” alfejezetet) – enélkül a könyvtár az új kulcsokat próbálná törölni, a régiek pedig árva bejegyzésként a fájlban maradnának.
+Az `rkyv` alapértelmezés szerint igazított memóriacímen várja az archivált adatot, a `redb` viszont a lap tetszőleges eltolásáról adja vissza a sor bájtjait, így minden sort előbb egy igazított pufferbe kellene másolni.
+Ezért a könyvtár bekapcsolja az `rkyv` `unaligned` feature-jét, amellyel az archivált típusok bármilyen címről olvashatók, így a `view` valóban a `redb` lapjáról olvas.
+A Cargo a feature-öket a teljes fordításra egyesíti, ezért ez a beállítás az alkalmazás többi `rkyv`-használatára is érvényes.
+Ez fordítva is igaz: a bájtsorrendet és a mutatók szélességét a könyvtár nem rögzíti, így ha az alkalmazás egy másik függősége ezeket átállítja (`big_endian`, `pointer_width_64`), azzal a könyvtár fájlformátuma is megváltozik.
 
-Ha maga a rekordtípus felépítése változik meg, a lemezen tárolt régi bájtok az új típusként már nem értelmezhetők.
-Erre a helyzetre szolgál a `migrate::<Old, New>` metódus, amely a korábbi `Old` típusként olvassa be a meglévő rekordokat, a hívó által megadott átalakító függvénnyel `New` típusú példányokká konvertálja őket, majd az új indexbejegyzésekkel együtt visszaírja a táblákba.
-Ez a folyamat szintén egyetlen tranzakcióban zajlik, így vagy minden rekord átalakul, vagy egyik sem.
-A migrációt minden szerkezeti módosításnál kötelező lefuttatni, hiszen a `bytecheck` validálás csupán a bájtok fizikai felépítését ellenőrzi, a szemantikai jelentésüket nem: ha a régi bájtsorozat az új elrendezésben véletlenül érvényesnek bizonyulna, a program hibaüzenet nélkül hibás adatot olvasna ki.
+=== Validálás
 
-A könyvtár minden művelete a saját `Error` típusával tér vissza, amelyet a `thiserror` makrójával definiáltam. Ebben a `redb` motor különböző hibái egy-egy változatba csomagolva jutnak el a hívóhoz, míg a könyvtár saját hibatípusai a következők:
+A lemezről olvasott bájtok nem feltétlenül érvényesek: a fájl megsérülhet, vagy a rekordtípus szerkezete megváltozhatott a kiírás óta.
+Ellenőrzés nélkül egy hibás belső eltolás vagy egy érvénytelen UTF-8 sztring memóriahibához vezetne, ezért az `rkyv` validáló `access` függvényét használom, amely a `bytecheck` segítségével minden olvasáskor ellenőrzi, hogy a bájtok érvényes archivált rekordot alkotnak-e.
+Hiba esetén a könyvtár a tábla nevét és a sor azonosítóját tartalmazó `Corrupt` hibát ad, így egy sérült rekord kezelhető hibát okoz, nem pedig nem definiált viselkedést.
+Ennek ára, hogy a `view*` metódusok is végigellenőrzik a teljes sort (például minden sztring UTF-8 érvényességét): ezek sem ingyenesek, csak a memóriafoglalást és a másolást takarítják meg.
 
-- `Corrupt`: a sérült rekord táblanevét és egyedi azonosítóját tartalmazza,
-- `InvalidIndexName`: akkor lép fel, ha egy index neve tiltott pont karaktert tartalmaz,
-- `Encode`: azt jelzi, ha egy rekord szerializálása meghiúsul.
+== Sémaváltozás <sec:sema>
 
-Az `Error` típust a `#[non_exhaustive]` attribútummal is elláttam, így egy későbbi alverzióban új hibaváltozatok is hozzáadhatók anélkül, hogy az megtörné a hívó fél kódjának fordítását – ennek ára csupán annyi, hogy a hibákra illeszkedő `match` kifejezéseknek mindig tartalmazniuk kell egy általános (`_`) ágat is.
+A validálás csak a bájtok fizikai felépítését ellenőrzi, a jelentésüket nem.
+Ha egy rekordtípus megváltozik, a régi bájtok az új elrendezésben is érvényesnek bizonyulhatnak, és a program hibaüzenet nélkül hibás adatot olvasna.
+Mivel a könyvtár sémaverziót nem tárol, a változást a hívónak kell jeleznie, erre két metódus szolgál.
 
-Egyetlen esetet szándékosan nem kezelek hibaként: mivel a `redb` egy táblát csak az első írási műveletkor hoz létre fizikailag, egy friss adatbázisban az olvasó tranzakció még nem létező táblát próbál megnyitni.
-Mivel ez egy új adatbázisfájlnál vagy egy még sosem használt indexnél teljesen normális állapot, a könyvtár kizárólag ezt az egy hibát alakítja át üres eredménnyé: a `get` ilyenkor `None`-t, a listázó lekérdezések üres vektort, a `count` pedig nullát ad vissza.
-Minden egyéb táblanyitási hiba – például ha az adott név alatt eltérő típusú tábla szerepel – változatlan formában továbbjut a hívóhoz.
+Ha csak az `index_keys` változik, például egy új index kerül a típusba, a meglévő indextáblák még a régi kulcsokat tartalmazzák.
+Ilyenkor a `rebuild_indexes` metódust kell meghívni, amely egy tranzakcióban eldobja a típus összes indextábláját, majd a tárolt rekordokból újraépíti őket.
+Ezt a típus minden további írása előtt meg kell tenni, mert a felülírás és a törlés a régi bejegyzéseket az aktuális `index_keys` alapján keresi meg (lásd a @sec:iras alfejezetet).
+Enélkül a könyvtár az új kulcsokat próbálná törölni, a régiek pedig árva bejegyzésként a fájlban maradnának: hibás találatot adnának, vagy ha a rekordjuk közben törlődött, `Corrupt` hibát okoznának.
+
+Ha a rekordtípus szerkezete változik, a `migrate::<Old, New>` metódust kell lefuttatni.
+Az `Old` a típus korábbi definíciója, amelyet a hívó a migráció idejére megtart a kódjában.
+A metódus a tárolt rekordokat `Old`-ként olvassa be, a hívó átalakító függvényével `New` típusúvá alakítja, majd az új indexbejegyzésekkel együtt visszaírja őket.
+Ez is egy tranzakcióban zajlik, így vagy minden rekord átalakul, vagy egyik sem.
+
+== Hibakezelés
+
+A könyvtár minden művelete a saját, a `thiserror` makrójával definiált `Error` típusával tér vissza.
+A redb különféle hibái egy-egy változatba csomagolva jutnak el a hívóhoz, a könyvtár saját hibái pedig a `Corrupt`, amely a sérült sor tábláját és azonosítóját tartalmazza, az `InvalidIndexName`, ha egy index neve pontot tartalmaz, és az `Encode`, ha egy rekord nem szerializálható.
+Az enum `#[non_exhaustive]`, így egy későbbi alverzióban új változat is felvehető anélkül, hogy a hívók kódja eltörne.
+
+Egy esetet szándékosan nem kezelek hibaként.
+A `redb` egy táblát csak akkor hoz létre, amikor egy író tranzakció először megnyitja, így egy friss adatbázisban az olvasás még nem létező táblát próbál megnyitni.
+Ez egy új fájlnál vagy egy még nem használt indexnél normális állapot, ezért a könyvtár csak ezt a hibát alakítja üres eredménnyé: a `get` ilyenkor `None`-t, a `contains` hamisat, a listázó lekérdezések üres vektort, a `count` pedig nullát ad.
+Minden más táblanyitási hiba, például ha a név alatt más típusú tábla szerepel, változatlanul jut el a hívóhoz.
 
 #pagebreak()
 
