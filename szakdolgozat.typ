@@ -591,7 +591,89 @@ Az író metódusok is csak megosztott referenciát (`&self`) kérnek, a zárol�
 
 === Rekordok és indexek
 
-#todo[a `Record` trait (`TABLE`, `Index`, `id`, `index_keys`) és a supertraitek; a típus a metódusokon van, nem a `Database`-en, így egy fájl több rekordtípust tárol; az `Index` trait: enum az indexnevek helyett, az elírás fordítási hiba, a `name()` adja a tárolt táblanevet; `NoIndex`; indexenként egy multimap tábla, példa táblákkal (`users`, `users.name`, `users.age`); többértékű mező és hiányzó érték]
+Egy tárolható adattípus és az adatbázisréteg közötti szerződést a `Record` trait rögzíti (@lst:record. kódrészlet).
+Ebben a `TABLE` konstans adja meg annak a táblának a nevét, amelybe az adott típus rekordjai kerülnek.
+Azért asszociált konstansként és nem metódusként definiáltam, mert a tábla nevére példányosított rekord nélkül is szükség van: egy `get::<User>(1)` híváskor még nincs kéznél konkrét objektum, a könyvtárnak mégis tudnia kell, honnan olvasson.
+A rekord egyedi azonosítóját az `id` metódus szolgáltatja; ezt mindig a hívó fél választja meg, automatikusan növekvő azonosítókat az adatbázisréteg nem generál.
+Az `index_keys` metódus pedig a rekordhoz tartozó indexbejegyzéseket adja vissza index és kódolt kulcs párok formájában – a kulcsok kódolási elveit a következő alfejezet tárgyalja.
+
+#figure(
+  ```rust
+  pub trait Record: Sized + /* rkyv traitek */ {
+      const TABLE: &'static str;
+      type Index: Index;
+
+      fn id(&self) -> u64;
+      fn index_keys(&self) -> Vec<(Self::Index, Vec<u8>)>;
+  }
+
+  pub trait Index {
+      fn name(&self) -> &'static str;
+  }
+  ```,
+  caption: [A `Record` és az `Index` trait (egyszerűsítve)],
+) <lst:record>
+
+Magát a rekordtípust nem a `Database` struktúrán, hanem az egyes műveleteken (`get::<User>`, `insert::<T>`) helyeztem el típusparaméterként.
+Ennek köszönhetően egyetlen adatbázisfájlban többféle rekordtípus is tárolható egymás mellett, a meghívott metódus pedig az adott típus `TABLE` konstansa alapján választja ki a megfelelő táblát.
+
+Az egyedileg definiált indexeket egy `Index` traitet megvalósító enum fogja össze, minden indexhez egy-egy változatot rendelve.
+Ha az indexeket egyszerű karakterláncok azonosítanák, egy elgépelt név csak futásidőben okozna hibát, így viszont az ilyen tévedés már fordítási időben kiszűrhető.
+Ráadásul más rekordtípus indexe sem adható át véletlenül, hiszen például a `find::<User>` hívás kizárólag a `User` saját indextípusát fogadja el.
+Mivel a `redb` motor futásidőben név szerint azonosítja a táblákat, a `name` metódus minden enum-változathoz hozzárendel egy nevet, amelyből a tárolt indextábla neve képződik.
+Ezt a leképezést szándékosan egy kézzel írt `match` kifejezéssel kell megvalósítani, ahelyett, hogy automatikusan a változat nevéből származtatnánk: így egy későbbi átnevezés (refaktorálás) nem változtatja meg észrevétlenül a fájlban tárolt táblanevet.
+A `match` kimerítő vizsgálata pedig garantálja, hogy egyetlen új indexváltozat sem maradhat név nélkül.
+Az indexet nem használó rekordtípusokhoz a könyvtár egy előre definiált, változatok nélküli `NoIndex` típust biztosít.
+
+A `redb` adatbázisfájljában minden rekordtípushoz egy elsődleges sortábla, valamint indexenként egy-egy külön indextábla tartozik.
+A sortábla nevét a `TABLE` konstans határozza meg: a kulcs a rekord egyedi azonosítója, az érték pedig maga a rekord az `rkyv` által szerializált bájtformátumban.
+Az indextáblák neve a sortábla és az adott index nevéből áll össze, egy ponttal elválasztva (például `users.name`), és fordított leképezést valósítanak meg: a mező kódolt értékéhez rendelik hozzá az azt tartalmazó rekordok azonosítóit.
+Mivel egy érték több rekordban is előfordulhat, az indextáblák a `redb` multimap tábláira épülnek, amelyekben egyetlen kulcshoz azonosítók halmaza tartozik.
+A pont elválasztó szerepe miatt sem a tábla, sem az index neve nem tartalmazhat pont karaktert, különben két eltérő index táblája névütközést okozhatna.
+Ennek megelőzésére a könyvtár a táblanevet már fordítási időben ellenőrzi, az index nevét pedig futásidőben, annak első használatakor validálja.
+
+A @tbl:tablak. táblázat egy `User` típus négy rekordját szemlélteti, a név, az életkor és a címkék szerinti indexekkel együtt.
+Egy indexelt lekérdezés mindig két lépésben zajlik: először a könyvtár kikeresi a kulcshoz tartozó azonosítókat az indextáblából, majd ezek alapján betölti magukat a rekordokat a sortáblából.
+
+#figure(
+  stack(
+    spacing: 1em,
+    table(
+      columns: 4,
+      table.header[`users` (id)][name][age][tags],
+      [1], [Alice], [30], [admin, staff],
+      [2], [Bob], [18], [--],
+      [3], [Carol], [30], [admin, dev],
+      [4], [Alice], [65], [--],
+    ),
+    grid(
+      columns: 3,
+      column-gutter: 1em,
+      table(
+        columns: 2,
+        table.header[`users.name`][azonosítók],
+        [Alice], [1, 4],
+        [Bob], [2],
+        [Carol], [3],
+      ),
+      table(
+        columns: 2,
+        table.header[`users.age`][azonosítók],
+        [18], [2],
+        [30], [1, 3],
+        [65], [4],
+      ),
+      table(
+        columns: 2,
+        table.header[`users.tag`][azonosítók],
+        [admin], [1, 3],
+        [dev], [3],
+        [staff], [1],
+      ),
+    ),
+  ),
+  caption: [Négy rekord a sortáblában és a három indextábla (a kulcsok a kódolás előtti értékükkel)],
+) <tbl:tablak>
 
 === Rendezéstartó kulcskódolás
 
