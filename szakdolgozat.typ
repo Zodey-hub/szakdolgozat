@@ -821,7 +821,27 @@ Ennek a biztonságnak azonban ára van: a `view*` metódusok is végigellenőrzi
 
 == Sémaváltozás és hibakezelés
 
-#todo[`rebuild_indexes` az `index_keys` megváltozása után, `migrate::<Old, New>` a rekordtípus megváltozása után; a publikus `Error` (`#[non_exhaustive]`, `Corrupt`, `InvalidIndexName`); a még nem létező tábla nem hiba, hanem üres eredmény]
+Mivel a könyvtár nem tárol automatikus sémaverziót, az adatstruktúra megváltozását a hívó félnek kell jeleznie; erre két dedikált metódus szolgál.
+Ha csupán az `index_keys` logikája módosul – például egy új index kerül a rekordtípusba –, a meglévő indextáblák még a régi kulcsokat tartalmazzák.
+Ilyenkor a `rebuild_indexes` metódust kell meghívni, amely egyetlen tranzakción belül eldobja az adott típus összes indextábláját, majd a tárolt rekordokból újraépíti őket.
+Ezt mindenképpen az adott típuson végzett további írási műveletek előtt kell végrehajtani, mivel a felülírás és a törlés a régi bejegyzéseket az aktuális `index_keys` alapján keresi meg (lásd az „Írás és törlés” alfejezetet) – enélkül a könyvtár az új kulcsokat próbálná törölni, a régiek pedig árva bejegyzésként a fájlban maradnának.
+
+Ha maga a rekordtípus felépítése változik meg, a lemezen tárolt régi bájtok az új típusként már nem értelmezhetők.
+Erre a helyzetre szolgál a `migrate::<Old, New>` metódus, amely a korábbi `Old` típusként olvassa be a meglévő rekordokat, a hívó által megadott átalakító függvénnyel `New` típusú példányokká konvertálja őket, majd az új indexbejegyzésekkel együtt visszaírja a táblákba.
+Ez a folyamat szintén egyetlen tranzakcióban zajlik, így vagy minden rekord átalakul, vagy egyik sem.
+A migrációt minden szerkezeti módosításnál kötelező lefuttatni, hiszen a `bytecheck` validálás csupán a bájtok fizikai felépítését ellenőrzi, a szemantikai jelentésüket nem: ha a régi bájtsorozat az új elrendezésben véletlenül érvényesnek bizonyulna, a program hibaüzenet nélkül hibás adatot olvasna ki.
+
+A könyvtár minden művelete a saját `Error` típusával tér vissza, amelyet a `thiserror` makrójával definiáltam. Ebben a `redb` motor különböző hibái egy-egy változatba csomagolva jutnak el a hívóhoz, míg a könyvtár saját hibatípusai a következők:
+
+- `Corrupt`: a sérült rekord táblanevét és egyedi azonosítóját tartalmazza,
+- `InvalidIndexName`: akkor lép fel, ha egy index neve tiltott pont karaktert tartalmaz,
+- `Encode`: azt jelzi, ha egy rekord szerializálása meghiúsul.
+
+Az `Error` típust a `#[non_exhaustive]` attribútummal is elláttam, így egy későbbi alverzióban új hibaváltozatok is hozzáadhatók anélkül, hogy az megtörné a hívó fél kódjának fordítását – ennek ára csupán annyi, hogy a hibákra illeszkedő `match` kifejezéseknek mindig tartalmazniuk kell egy általános (`_`) ágat is.
+
+Egyetlen esetet szándékosan nem kezelek hibaként: mivel a `redb` egy táblát csak az első írási műveletkor hoz létre fizikailag, egy friss adatbázisban az olvasó tranzakció még nem létező táblát próbál megnyitni.
+Mivel ez egy új adatbázisfájlnál vagy egy még sosem használt indexnél teljesen normális állapot, a könyvtár kizárólag ezt az egy hibát alakítja át üres eredménnyé: a `get` ilyenkor `None`-t, a listázó lekérdezések üres vektort, a `count` pedig nullát ad vissza.
+Minden egyéb táblanyitási hiba – például ha az adott név alatt eltérő típusú tábla szerepel – változatlan formában továbbjut a hívóhoz.
 
 #pagebreak()
 
