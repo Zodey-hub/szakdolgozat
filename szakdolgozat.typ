@@ -677,7 +677,76 @@ Egy indexelt lekérdezés mindig két lépésben zajlik: először a könyvtár 
 
 === Rendezéstartó kulcskódolás
 
-#todo[a `key::enc`: a redb bájtonként hasonlít, ezért a kódolásnak az értékek sorrendjét kell megőriznie; big-endian egészek, előjelbit-csere, lebegőpontos számok; sztringek: `00 01` lezáró és `00 FF` csere; tuple mint összetett kulcs; `prefix_range`; a kódolás a fájlformátum része]
+Az indextáblák kulcsai nyers bájtsorozatok, amelyeket a `redb` bájtról bájtra, balról jobbra haladva hasonlít össze.
+Egyenlőségkereséshez elég lenne, ha azonos érték mindig azonos bájtokat adna, a tartománylekérdezés viszont az indextábla egy összefüggő szakaszát járja be, ezért a bájtok sorrendjének meg kell egyeznie az értékek természetes sorrendjével.
+A rekordok `rkyv`-vel szerializált bájtjai ezt nem teljesítik, ezért a kulcsokat a `key` modul `enc` függvénye külön kódolja; ezt használja az `index_keys` metódus és a lekérdezések is.
+
+Az egész számok natív – a legtöbb architektúrán _little-endian_ – ábrázolása önmagában nem rendezéstartó, mivel ebben a legkisebb helyiértékű bájt áll elöl.
+A @tbl:endian. táblázat bal oldalán látható, hogy egy `u16` mező 18, 256 és 300 értékei a natív bájtjaik alapján 256, 18, 300 sorrendbe kerülnének, így egy 0 és 100 közötti tartománylekérdezés mindhárom rekordot visszaadná (a határok natív bájtjai `00 00` és `64 00`, és mindhárom kulcs e kettő közé esik).
+Az `enc` ezért az előjel nélküli egészeket _big-endian_ sorrendben kódolja, ahol a legnagyobb helyiértékű bájt kerül előre, így a bájtok sorrendje megegyezik a számok nagyságrendjével.
+#figure(
+  table(
+    columns: 4,
+    table.header[Natív bájtok][Érték][`enc` bájtjai][Érték],
+    [`00 01`], [256], [`00 12`], [18],
+    [`12 00`], [18], [`01 00`], [256],
+    [`2C 01`], [300], [`01 2C`], [300],
+  ),
+  caption: [Egy `u16` mező értékei a bájtjaik szerint rendezve],
+) <tbl:endian>
+
+Az előjeles egészeknél a kettes komplemens ábrázolás jelent akadályt: mivel a negatív számok legfelső bitje 1, bájtként összehasonlítva a pozitív számok mögé kerülnének.
+Ennek kiküszöbölésére az `enc` a _big-endian_ bájtokban megfordítja az előjelbitet, így például a `-1i8` kódja `7F`, a `0i8` kódja pedig `80` lesz.
+A lebegőpontos számoknál más a gond: az IEEE 754 előjelbitből és abszolút értékből álló ábrázolásában a pozitív számok bitmintái már helyes sorrendben vannak, a negatívaké viszont fordítottban, mert ott a nagyobb abszolút értékhez nagyobb bitminta tartozik.
+Ezért pozitív számnál csak az előjelbitet fordítom meg, negatívnál az összes bitet, így a negatív számok a pozitívak elé, egymás között pedig helyes sorrendbe kerülnek.
+
+A kódolás hossza és formátuma szigorúan a típustól függ: az `enc(18u8)` egyetlen bájtot, míg az `enc(18u32)` négy bájtot eredményez.
+Ha az `index_keys` és a lekérdezés eltérő típusként kódolja ugyanazt az értéket, a keresés hibaüzenet nélkül üres eredménnyel tér vissza, ezért a számliterálokat mindig típusutótaggal kell írni (`18u8`).
+
+A sztringek és a bájtszeletek változó hosszúságúak, ezért a kódolásuknak azt is jeleznie kell, hol érnek véget.
+Erre akkor van szükség, ha egy összetett kulcs több egymás után fűzött mezőből áll: végjel nélkül például a `("a", "bc")` és az `("ab", "c")` pár pontosan ugyanazt a bájtsorozatot adná.
+A hossz előreírása sem megoldás, mert akkor az határozná meg a rendezést, így a `"b"` az `"ab"` elé kerülne.
+Az `enc` ezért minden sztring végére `00 01` lezárót ír.
+A `00` a legkisebb bájtérték, így a rövidebb szó mindig megelőzi a folytatását (az `"a"` az `"ab"` elé kerül).
+Egy Rust-sztring viszont maga is tartalmazhat `00` bájtot, amely hamis végjelnek látszana, ezért ezeket `00 FF` sorozatra cserélem.
+A `00` után így mindig a következő bájt dönti el, hogy a sztring véget ért (`01`), vagy valódi nulla bájt következik (`FF`).
+Mivel a `01` kisebb az `FF`-nél, a lezárt sztring itt is a folytatódó elé kerül.
+
+Mivel a számok kódolása rögzített hosszúságú, a sztringeké pedig végjellel zárul, egyetlen érték kódolása sem lehet egy másik, azonos típusú érték kódolásának előtagja.
+Ezért több mező kódolása egyszerűen egymás után fűzhető, és a bájtsorozatból mindig kiderül, hol ér véget az egyik mező.
+Az `enc` legfeljebb négyelemű tuple típusokat is elfogad, és a tagok kódolását összefűzve összetett kulcsot képez.
+Egy ilyen index először az első, azon belül a második mező szerint rendezett, és egy tartománylekérdezés ebben a sorrendben járja be a két határ közötti kulcsokat (@lst:osszetett. kódrészlet).
+Ha az első mező mindkét határon azonos, a lekérdezés egy név rekordjait szűri életkor szerint.
+Ha eltér, a két határ közötti összes kulcsot visszaadja, név, azon belül életkor szerint rendezve.
+
+#figure(
+  ```rust
+  // index_keys: (UserIndex::NameAge, key::enc((&self.name, self.age)))
+
+  // "Alice", 18 és 30 év között
+  let range = key::enc(("Alice", 18u8))..=key::enc(("Alice", 30u8));
+  db.range::<User>(UserIndex::NameAge, range)?;
+
+  // "Alice", bármilyen életkorral
+  let range = key::enc(("Alice", u8::MIN))..=key::enc(("Alice", u8::MAX));
+  db.range::<User>(UserIndex::NameAge, range)?;
+
+  // ("Alice", 18)-tól ("Carol", 30)-ig, a köztes nevek
+  // (például "Bob") minden életkorával együtt
+  let range = key::enc(("Alice", 18u8))..=key::enc(("Carol", 30u8));
+  db.range::<User>(UserIndex::NameAge, range)?;
+  ```,
+  caption: [Lekérdezések egy (név, életkor) összetett indexen],
+) <lst:osszetett>
+
+A sztringek kódolási módja az előtagra történő keresést is lehetővé teszi, amelyet a `prefix_range` függvény valósít meg.
+A keresési tartomány alsó határa maga a kódolt előtag lezáró végjel nélkül, a felső határa pedig ugyanez egy `FF` bájttal kiegészítve.
+Egy ilyen előtaggal kezdődő sztring kódolásában az előtag után UTF-8 bájt, kódolt nulla bájt (`00 FF`) vagy lezáró végjel (`00 01`) következik.
+Ezek első bájtja mind kisebb az `FF`-nél, amely érvényes UTF-8 szövegben sosem fordul elő.
+Így például a `prefix_range("Al")` tartományba az `"Al"` és az `"Alice"` kódolása beleesik, míg a `"Bob"` vagy az `"A"` kódolása már kívül esik rajta.
+
+A kulcskódolás a fájlformátum része, így bármilyen későbbi módosítása érvénytelenítené a már meglévő indextáblákat.
+Ugyanezért a `usize` és az `isize` típusokhoz szándékosan nem tartozik kódolás: a méretük platformfüggő, így egy 64 bites rendszeren írt adatbázisfájl kulcsai egy 32 bites gépen nem egyeznének az újonnan generáltakkal.
 
 == Írás és törlés
 
