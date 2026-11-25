@@ -750,7 +750,27 @@ Ugyanezért a `usize` és az `isize` típusokhoz szándékosan nem tartozik kód
 
 == Írás és törlés
 
-#todo[`insert` és `insert_many` egy tranzakcióban (egy commit = egy fájlszinkronizálás); csak a változott indexbejegyzések íródnak; a visszagörgetés a `commit` elmaradásából jön; a törlés a régi rekordot dekódolja, hogy tudja, mely indexbejegyzéseket kell törölni]
+Rekordokat az `insert` és az `insert_many` metódusokkal lehet az adatbázisba menteni: az előbbi egyetlen példányt, az utóbbi pedig tetszőleges számú rekordot ír ki egyetlen tranzakción belül.
+Maga az `insert` valójában csak egy egyelemű listával hívja meg az `insert_many` függvényt, így a beszúrás teljes logikája egyetlen helyen összpontosul.
+Külön frissítő művelet (update) nincs: ha a megadott azonosító már foglalt, az új rekord egyszerűen felülírja a korábbit.
+
+Az `insert_many` létjogosultságát a tranzakciók lezárásának költsége adja.
+A `redb` a `commit` hívásakor lemezre szinkronizálja az adatbázisfájlt, hogy a véglegesített adatok egy váratlan áramszünetet is túléljenek – ez pedig az írási folyamat messze leglassabb lépése.
+Ha a hívó fél sok rekordot egyesével szúr be, minden egyes művelet után külön lemezszinkronizálás történik, az `insert_many` viszont az egész köteget egyetlen `commit` hívással véglegesíti.
+
+Minden író metódus pontosan egy író tranzakciót nyit, így a módosítások vagy hiánytalanul érvényre jutnak, vagy egyik sem lép életbe.
+Ehhez nem volt szükség külön rollback logika megírására: ha bármelyik részművelet hibát ad, a `?` operátor még a `commit` előtt kilép a függvényből, a tranzakciós objektum véglegesítés nélkül megsemmisül, a `redb` pedig automatikusan eldobja a függőben lévő módosításokat.
+Ennek köszönhetően az adatbázisban sosem maradhat olyan rekord, amelyhez hiányoznak az indexbejegyzések, ahogyan egy félbeszakadt `insert_many` sem hagyhat maga után részleges állapotot.
+
+Felülíráskor természetesen a kapcsolódó indexeket is naprakészen kell tartani.
+Ha a könyvtár csupán a sortábla bejegyzését cserélné le, egy névváltoztatás után a `users.name` táblában a régi név alatt is ott maradna a rekord azonosítója, így a későbbi keresések hibás találatot adnának.
+Mivel a régi rekord indexbejegyzéseit sehol nem tárolom külön, a könyvtár felülírás előtt kiolvassa és dekódolja a meglévő rekordot, majd annak `index_keys` metódusából állapítja meg, milyen kulcsok tartoztak hozzá.
+Ezután összeveti a régi és az új kulcslistát, és kizárólag a különbségeket hajtja végre: a csak a régiben szereplő bejegyzéseket törli, az újonnan megjelenőket beszúrja, a közös elemeket pedig érintetlenül hagyja.
+Mivel egy módosítás jellemzően csak egy-két mezőt érint, az indextáblák nagy része változatlan marad – ha például a @tbl:tablak. táblázat 1-es rekordjában csak az életkor módosul 30-ról 31-re, a `users.age` táblában egyetlen bejegyzés törlődik és egy új keletkezik, miközben a `users.name` és a `users.tag` táblákhoz hozzá sem kell nyúlni.
+
+A rekordok eltávolítása a `delete` és a `delete_many` metódusokkal ugyanígy egyetlen tranzakcióban zajlik, a visszatérési érték pedig megadja, hogy a megadott azonosítók közül hány létezett ténylegesen az adatbázisban.
+A törléshez szintén ki kell olvasni és dekódolni kell a régi rekordot, hiszen kizárólag az `index_keys` metódusból derül ki, mely indexbejegyzéseket kell eltávolítani mellőle.
+Ennek a kialakításnak két fontos következménye van: egyrészt minden felülírás és törlés egy előzetes olvasással és dekódolással is jár, másrészt egy esetlegesen megsérült sort a publikus API-n keresztül sem felülírni, sem törölni nem lehet, mivel a dekódolása azonnal `Corrupt` hibát vált ki.
 
 == Olvasás
 
