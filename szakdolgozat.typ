@@ -1046,13 +1046,40 @@ A szerver kezelője maga a `Router` típus, amely a @lst:handler. kódrészletbe
 A `handle` metódus az `Accept` fejlécből meghatározza a válasz formáját, majd a metódus, az útvonal és az `id` paraméter hármasára illesztve kiválasztja a végpontot.
 Ha a metódus nem `GET`, az útvonal ismeretlen, vagy egy könyvhöz kötött útvonalon hiányzik az érvényes `id`, a kliens a „nem található” oldalt kapja.
 
-== Az EPUB formátum
-
-#todo[felépítése (ZIP, OPF, Dublin Core metaadatok, finomítások: szerep és esemény, borítókép); mit nyerünk ki belőle]
-
 == A könyvtár indexelése
 
-#todo[a `Book` rekord és a metaadatok kinyerése (cím hiányában a fájlnév, az év, a leírás szövege); az azonosító a fájlnév FNV-1a hash-e 53 bitre vágva (stabil linkek, pontos JSON szám); az adatbázis minden induláskor újraépül; egy-egy `insert_many` a könyvekre és a borítókra; a szöveges mezők szavanként, normalizálva kerülnek az indexbe]
+=== A metaadatok kinyerése
+
+A szerver elindítását megelőző inicializálási fázisban az alkalmazás átvizsgálja a könyvek könyvtárában közvetlenül elhelyezkedő EPUB-fájlokat, és mindegyikből létrehoz egy-egy `Book` rekordot.
+Amennyiben az adott kiadvány rendelkezik borítóképpel, ahhoz egy külön `Cover` rekord is társul.
+A fájlok megnyitását és feldolgozását az `epub` könyvtár végzi; az alkalmazás a teljes szövegtörzs beolvasása helyett kizárólag a releváns metaadatokat -- a címet, a szerzőket, a fordítókat, a kiadót, a kiadás évét, a nyelvet, a témaköröket, a leírást és a borítóképet -- nyeri ki.
+
+A hiányos vagy formázott adatok kezelésére külön szabályok vonatkoznak.
+A cím nélküli könyvek sem maradnak ki a feldolgozásból, ezek esetében a fájlnév szolgál címként.
+A gyakran HTML-kódot tartalmazó leírásokból pedig kizárólag a nyers szöveget tartom meg: a HTML-címkéket eltávolítom, a felesleges szóközöket pedig összevonom.
+
+=== Az azonosító
+
+Minden könyv egyedi azonosítója a fájlnevéből képzett, 53 bitre csonkolt 64 bites FNV-1a hash-érték.
+Mivel az azonosító kizárólag a fájlnévtől függ, az egyes kötetek minden újraindításkor ugyanazt az értéket kapják, így a rájuk mutató hivatkozások (`/book?id=…`) hosszabb távon is érvényesek maradnak.
+
+Az 53 bites csonkolásra a JSON-alapú kommunikáció miatt van szükség.
+A JavaScript minden számot lebegőpontos formátumban ábrázol, így a `Number.MAX_SAFE_INTEGER` ($2^53 - 1$) értéknél nagyobb egészeket már nem képes pontosan kezelni, ami a kliensoldalon az azonosítók sérüléséhez vezetne.
+Abban a ritka esetben, ha két különböző fájlnév ütközne, és ugyanazt az azonosítót kapná, az adatbázisbeli felülírás elkerülése érdekében a második fájl kimarad a feldolgozásból, az eseményről pedig figyelmeztetés kerül a naplóba.
+
+=== Az adatbázis felépítése
+
+A beolvasás előtt az alkalmazás törli az előző futásból megmaradt adatbázisfájlt, így az adatbázis minden induláskor üresen kezd, és teljes egészében a könyvek mappájából épül fel.
+Ennek köszönhetően az adatok egyetlen hiteles forrása (single source of truth) maga a fájlrendszer, az adatbázis pedig csak gyorsítótárként szolgál.
+Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani (lásd a @sec:sema alfejezetet).
+Egy sérült vagy olvashatatlan fájl sem akadályozza meg az indulást: az alkalmazás átugorja, és figyelmeztetést ír róla a naplóba.
+
+A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással: egyszer a könyvek, egyszer a borítóképek.
+Így a teljes indexelés két tranzakcióból és két fájlszinkronizálásból áll, és nem könyvenként kell egy-egy tranzakciót lezárni.
+
+Végül a `Book` típus kereshetőségét az indexbejegyzései biztosítják.
+A szöveges mezők -- a cím, a szerzők, a fordítók, a témakörök és a kiadó -- szavanként kerülnek a saját indexükbe: az alkalmazás minden nem alfanumerikus karakter mentén szavakra bontja az értékeket, majd az egyes szavakat kisbetűsítve és ékezetmentesítve, külön kulcsként tárolja.
+A nyelv indexébe csak a nyelvi címke elsődleges része kerül (például `en-US` helyett `en`), az év indexébe pedig maga az évszám.
 
 == Keresés
 
