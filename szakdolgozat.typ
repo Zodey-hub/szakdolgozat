@@ -112,9 +112,10 @@ A könyvtárak gyakorlati használhatóságát egy publikus EPUB-kereső és -le
 == A megoldási mód
 
 A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
-A kérések elemzését az httparse, a protokoll típusait a http könyvtár biztosítja.
-Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül, amelynek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
-A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást egy saját stíluslap végzi, így kliensoldali JavaScriptre pedig nincs is szükség.
+A kérések elemzését a httparse, a protokoll típusait a http könyvtár biztosítja.
+Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
+Az rkyv-nek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
+A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást egy saját stíluslap végzi, így kliensoldali JavaScriptre nincs szükség.
 
 == Alkalmazott eszközök, módszerek
 
@@ -484,7 +485,8 @@ A fejlécet a `httparse` ezért kétszer elemzi, két különböző célból.
 Az első elemzés csak a fejléc végét keresi meg: a beolvasás közben, a `BytesMut` pufferen fut, és a fejléc hosszát adja vissza.
 Ez az elemzés többször is lefuthat, minden hálózati olvasás után elölről indul, amíg a fejléc teljes nem lesz.
 Az eredményében kapott szeletek ilyenkor a pufferbe mutatnak, ezért nem tarthatók meg.
-Amíg léteznek, kölcsönzik a puffert, így a fejléc leválasztására szolgáló `split_to` hívást a borrow checker nem engedné meg, ráadásul a `slice_ref` is csak olyan szeletből készíthet nézetet, amely magába a leválasztott `Bytes` példányba mutat.
+Amíg léteznek, kölcsönzik a puffert, így a borrow checker nem engedné meg a fejléc leválasztását végző `split_to` hívást.
+Ráadásul a `slice_ref` is csak olyan szeletből készíthet nézetet, amely magába a leválasztott `Bytes` példányba mutat.
 A második elemzés ezért már a leválasztott és befagyasztott `head` példányon fut (@lst:fejlec. kódrészlet), és az itt kapott szeletekből készülnek a `Bytes` nézetek.
 
 == Korlátok és védelmek
@@ -533,7 +535,8 @@ A méretkorlát ellenőrzése még a törzs beolvasása előtt megtörténik, í
 
 === Időkorlátok
 
-Egy kliens úgy is lekötheti a szerver erőforrásait, hogy egyáltalán nem küld adatot, vagy csak nagyon lassan csepegteti azt, ezen alapulnak a Slowloris típusú támadások.
+Egy kliens úgy is lekötheti a szerver erőforrásait, hogy egyáltalán nem küld adatot, vagy csak nagyon lassan csepegteti azt.
+Erre épülnek a Slowloris típusú támadások.
 A kapcsolatot kiszolgáló ciklus ezért minden hálózati várakozást időkorláttal futtat: a művelet és egy időzítő versenyez egymással, és ha az utóbbi jár le előbb, a szerver válasz nélkül lezárja a kapcsolatot.
 A rövid tétlenségi időkorlát (`IDLE_TIMEOUT`) a következő kérés első bájtjára való várakozásra, a hosszabb kapcsolati időkorlát (`CONNECTION_TIMEOUT`) a már megkezdett kérés beolvasására és a válasz kiírására vonatkozik.
 
@@ -631,7 +634,6 @@ A kapcsolat kiszolgálása közben felmerülő hibákat egy belső `Error` enum 
 Az ilyen hibák sosem jutnak el a szerver hívójáig: mindig az adott kapcsolat lezárásával végződnek, a többi kapcsolatot pedig nem érintik.
 
 A belső hibákat a `client_status` metódus két csoportra osztja: minden hibaváltozathoz vagy egy HTTP-státuszkódot rendel, vagy üres értéket ad vissza.
-
 - *Protokollhibák:* A kliens hibás formátumú vagy a méretkorlátokat túllépő kérést küldött, maga a hálózati kapcsolat azonban még él.
   Ilyenkor a szerver egy törzs nélküli státuszválaszt küld, hogy a kliens értesüljön az elutasítás okáról: a korlátok és a törzs hossza miatti elutasításoknál a @tbl:korlatok. és a @tbl:hossz. táblázatban szereplő kódot, a hibás formátumú kérésre `400 Bad Request`-et.
   A hibaüzenet elküldése után a szerver lezárja a kapcsolatot, hiszen egy hibásan keretezett kérés után már nem állapítható meg biztosan, hol kezdődik a következő.
@@ -724,7 +726,8 @@ Egy indexelt lekérdezés két lépésben zajlik: a könyvtár először az inde
 
 === A `Record` trait
 
-Egy tárolható típus és az adatbázisréteg közötti szerződést a `Record` trait rögzíti. A @lst:user. kódrészlet a @tbl:tablak. táblázat `User` típusának megvalósítását mutatja.
+Egy tárolható típus és az adatbázisréteg közötti szerződést a `Record` trait rögzíti.
+A @lst:user. kódrészlet a @tbl:tablak. táblázat `User` típusának megvalósítását mutatja.
 A `TABLE` konstans a sortábla nevét adja meg.
 Azért asszociált konstans és nem metódus, mert a tábla nevére példány nélkül is szükség van: egy `get::<User>(1)` hívásnál még nincs rekord, a könyvtárnak mégis tudnia kell, honnan olvasson.
 Az `id` a rekord azonosítóját adja vissza; ezt mindig a hívó választja meg, automatikusan növekvő azonosítót a könyvtár nem generál.
@@ -1037,7 +1040,7 @@ Az alkalmazáson belül is csak egyetlen modul olvas EPUB-fájlt, a többi már 
 - `router`: az útvonalak, vagyis minden útvonal és a hozzá tartozó oldal egy helyen;
 - `pages`: az oldalak, amelyeknek HTML és JSON formájuk is van;
 - `files`: a borítókép, a letöltés és a stíluslap, amelyeknek csak egy formájuk van;
-- `reply`: a végpontok eredményének válasszá alakítása.
+- `reply`: a végpontok eredményét a `Reply` trait alakítja válasszá: a `None`-ból 404-es oldal, a hibából naplózás után 500-as oldal lesz, így minden hiba egy helyen végződik.
 
 #h(1.5em)
 
@@ -1050,22 +1053,22 @@ Ha a metódus nem `GET`, az útvonal ismeretlen, vagy egy könyvhöz kötött ú
 
 === A metaadatok kinyerése
 
-A szerver elindítását megelőző inicializálási fázisban az alkalmazás átvizsgálja a könyvek könyvtárában közvetlenül elhelyezkedő EPUB-fájlokat, és mindegyikből létrehoz egy-egy `Book` rekordot.
-Amennyiben az adott kiadvány rendelkezik borítóképpel, ahhoz egy külön `Cover` rekord is társul.
-A fájlok megnyitását és feldolgozását az `epub` könyvtár végzi; az alkalmazás a teljes szövegtörzs beolvasása helyett kizárólag a releváns metaadatokat -- a címet, a szerzőket, a fordítókat, a kiadót, a kiadás évét, a nyelvet, a témaköröket, a leírást és a borítóképet -- nyeri ki.
+Induláskor, még a szerver elindítása előtt az alkalmazás a könyvek mappájában közvetlenül található összes EPUB-fájlból egy `Book` rekordot készít, és ha a könyvnek van borítóképe, mellé egy `Cover` rekordot is.
+A fájlokat az `epub` könyvtár nyitja meg és elemzi, az alkalmazás pedig a könyv szövegét nem olvassa, csak a metaadatai közül veszi át a címet, a szerzőket, a fordítókat, a kiadót, a kiadás évét, a nyelvet, a témaköröket, a leírást és a borítóképet.
 
-A hiányos vagy formázott adatok kezelésére külön szabályok vonatkoznak.
-A cím nélküli könyvek sem maradnak ki a feldolgozásból, ezek esetében a fájlnév szolgál címként.
-A gyakran HTML-kódot tartalmazó leírásokból pedig kizárólag a nyers szöveget tartom meg: a HTML-címkéket eltávolítom, a felesleges szóközöket pedig összevonom.
+Néhány mezőt nem lehet változatlanul átvenni.
+A szerzőt és a fordítót ugyanolyan metaadatelem írja le, ezeket egy MARC-szerepkód különbözteti meg (`aut` a szerző, `trl` a fordító), az évet pedig a fájl dátumai közül a kiadáshoz tartozóból veszem.
+A cím nélküli könyv sem marad ki, ilyenkor a fájl neve lesz a címe.
+A leírás gyakran HTML-kódot tartalmaz, ebből csak a szöveget tartom meg: a címkéket eltávolítom, a felesleges szóközöket pedig összevonom.
 
 === Az azonosító
 
-Minden könyv egyedi azonosítója a fájlnevéből képzett, 53 bitre csonkolt 64 bites FNV-1a hash-érték.
-Mivel az azonosító kizárólag a fájlnévtől függ, az egyes kötetek minden újraindításkor ugyanazt az értéket kapják, így a rájuk mutató hivatkozások (`/book?id=…`) hosszabb távon is érvényesek maradnak.
+A könyv azonosítója a fájlnevének 64 bites FNV-1a hash-e, 53 bitre csonkolva.
+Mivel csak a fájlnévtől függ, egy könyv minden újraindításkor ugyanazt az azonosítót kapja, így a rá mutató linkek (`/book?id=…`) is érvényesek maradnak.
 
-Az 53 bites csonkolásra a JSON-alapú kommunikáció miatt van szükség.
-A JavaScript minden számot lebegőpontos formátumban ábrázol, így a `Number.MAX_SAFE_INTEGER` ($2^53 - 1$) értéknél nagyobb egészeket már nem képes pontosan kezelni, ami a kliensoldalon az azonosítók sérüléséhez vezetne.
-Abban a ritka esetben, ha két különböző fájlnév ütközne, és ugyanazt az azonosítót kapná, az adatbázisbeli felülírás elkerülése érdekében a második fájl kimarad a feldolgozásból, az eseményről pedig figyelmeztetés kerül a naplóba.
+Az 53 bites csonkolásra a JSON-válaszok miatt van szükség.
+A JavaScript minden számot lebegőpontosan ábrázol, ezért a `Number.MAX_SAFE_INTEGER` ($2^53 - 1$) értéknél nagyobb egészeket már nem tudja pontosan beolvasni, így egy JavaScript-kliens hibás azonosítóval dolgozna.
+Ha két fájlnév mégis ugyanazt az azonosítót kapja, a második fájl kimarad, és erről figyelmeztetés kerül a naplóba, különben a második könyv felülírná az elsőt az adatbázisban.
 
 === Az adatbázis felépítése
 
