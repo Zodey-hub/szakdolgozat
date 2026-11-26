@@ -112,16 +112,16 @@ A könyvtárak gyakorlati használhatóságát egy publikus EPUB-kereső és -le
 == A megoldási mód
 
 A HTTP-szerver a nulláról készült, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
-A kérések elemzését a httparse, a protokoll típusait a http könyvtár biztosítja.
+A kérések elemzését a httparse, a protokoll típusait a http, a bájtpuffereket a bytes könyvtár biztosítja.
 Az adattárolásért egy saját adatbázisréteg felel, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
-Az rkyv-nek köszönhetően a tárolt rekordok beolvasáskor elemzés, deszerializálás és újabb memóriafoglalás nélkül, közvetlenül Rust-struktúraként használhatók.
+Az rkyv-nek köszönhetően a tárolt rekordok deszerializálás és másolás nélkül, közvetlenül Rust-struktúraként is olvashatók, a bájtokat csak validálni kell.
 A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-mintán alapuló HTML-generátor állítja elő, a formázást egy saját stíluslap végzi, így kliensoldali JavaScriptre nincs szükség.
 
 == Alkalmazott eszközök, módszerek
 
 - Programozási nyelv: Rust
 - Aszinkron futtatókörnyezet: a smol építőelemei (async-executor, async-io, async-net)
-- HTTP-szerver: http, httparse
+- HTTP-szerver: http, httparse, bytes
 - Adatbázis: redb, rkyv
 - Felhasználói felület: build_html, saját stíluslap
 - EPUB-feldolgozás: epub
@@ -172,10 +172,9 @@ Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése
 #par(first-line-indent: 0em)[A munkám két fő területet ölel fel:]
 
 - *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
-  Külső könyvtárat csak a kérések elemzéséhez (httparse) és a protokoll alapvető típusainak leírásához (http) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
+  Külső könyvtárat csak a kérések elemzéséhez (httparse), a protokoll alapvető típusainak leírásához (http) és a bájtpufferekhez (bytes) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
 - *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
-  A tárolt rekordokat beolvasáskor nem kell elemezni, deszerializálni, és új memóriaterületet sem kell foglalni számukra: a nyers bájtok közvetlenül Rust-struktúraként használhatók.
-  Mivel mindkét könyvtár tisztán Rust nyelven íródott, az adatbázis statikusan a programmal együtt fordul, külön adatbázismotorra és más nyelvű függőségre nincs szükség.
+  A tárolt rekordok deszerializálás és másolás nélkül, közvetlenül Rust-struktúraként is olvashatók: a nyers bájtokat csak validálni kell, új memóriaterületet nem kell foglalni számukra.
 
 #h(1.5em)
 
@@ -260,7 +259,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 == További felhasznált könyvtárak
 
-#todo[a http (közös típusok I/O nélkül) és a httparse (allokáció nélküli fejlécelemző, `Complete`/`Partial`); a bytes (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta, saját fork az űrlapelemek miatt); az epub; a serde és a serde_json; a unicode-normalization]
+#todo[a http (közös típusok I/O nélkül) és a httparse (allokáció nélküli fejlécelemző, `Complete`/`Partial`); a bytes (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta); az epub; a serde és a serde_json; a unicode-normalization]
 
 #pagebreak()
 
@@ -989,7 +988,7 @@ Ez is egy tranzakcióban zajlik, így vagy minden rekord átalakul, vagy egyik s
 == Hibakezelés
 
 A könyvtár minden művelete a saját, a `thiserror` makrójával definiált `Error` típusával tér vissza.
-A redb különféle hibái egy-egy változatba csomagolva jutnak el a hívóhoz, a könyvtár saját hibái pedig a `Corrupt`, amely a sérült sor tábláját és azonosítóját tartalmazza, az `InvalidIndexName`, ha egy index neve pontot tartalmaz, és az `Encode`, ha egy rekord nem szerializálható.
+A `redb` különféle hibái egy-egy változatba csomagolva jutnak el a hívóhoz, a könyvtár saját hibái pedig a `Corrupt`, amely a sérült sor tábláját és azonosítóját tartalmazza, az `InvalidIndexName`, ha egy index neve pontot tartalmaz, és az `Encode`, ha egy rekord nem szerializálható.
 Az enum `#[non_exhaustive]`, így egy későbbi alverzióban új változat is felvehető anélkül, hogy a hívók kódja eltörne.
 
 Egy esetet szándékosan nem kezelek hibaként.
@@ -1000,7 +999,7 @@ Minden más táblanyitási hiba, például ha a név alatt más típusú tábla 
 #pagebreak()
 
 // ---------- A bemutató alkalmazás ----------
-// terjedelem: kb. 5,5 oldal
+// terjedelem: kb. 5,25 oldal
 
 = A bemutató alkalmazás
 
@@ -1074,7 +1073,7 @@ Ha két fájlnév mégis ugyanazt az azonosítót kapja, a második fájl kimara
 
 A beolvasás előtt az alkalmazás törli az előző futásból megmaradt adatbázisfájlt, így az adatbázis minden induláskor üresen kezd, és teljes egészében a könyvek mappájából épül fel.
 Ennek köszönhetően az adatok egyetlen hiteles forrása (single source of truth) maga a fájlrendszer, az adatbázis pedig csak gyorsítótárként szolgál.
-Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani (lásd a @sec:sema alfejezetet).
+Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani.
 Egy sérült vagy olvashatatlan fájl sem akadályozza meg az indulást: az alkalmazás átugorja, és figyelmeztetést ír róla a naplóba.
 
 A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással: egyszer a könyvek, egyszer a borítóképek.
@@ -1086,7 +1085,7 @@ A nyelv indexébe csak a nyelvi címke elsődleges része kerül (például `en-
 
 == Keresés
 
-#todo[a szövegek normalizálása (kisbetű, ékezetek elhagyása) indexeléskor és kereséskor ugyanúgy; szó eleji egyezés a `prefix_range`-dzsel; a jelöltek a legszelektívebb feltétel indexéből jönnek, a többi feltételt memóriában szűri]
+#todo[a keresett szöveg ugyanúgy normalizálódik (kisbetű, ékezetek elhagyása, szavakra bontás), mint indexeléskor -- a módját az indexelés már leírta, itt csak hivatkozni kell rá; szó eleji egyezés a `prefix_range`-dzsel; a jelöltek a legszelektívebb feltétel indexéből jönnek, a többi feltételt memóriában szűri]
 
 == Borítóképek és letöltés
 
