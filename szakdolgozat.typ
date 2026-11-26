@@ -1145,11 +1145,41 @@ Mivel a könyvek fájlneve gyakran ékezetes, a pontos név UTF-8 és százalék
 
 == A felhasználói felület
 
-#todo[szerveroldali renderelés JavaScript nélkül; a `Page` trait: a serde adja a JSON-t, a trait a HTML-t, az `Accept` fejléc dönt; a build_html builder mintája, minden EPUB-ból jövő szöveg escape-elve (XSS); saját, osztály nélküli stíluslap a programba fordítva, miért nem Pico.css vagy Simple.css]
+=== Szerveroldali megjelenítés
+
+Az oldalakat teljes egészében a szerver állítja elő, a böngésző kész HTML-dokumentumot kap, kliensoldali JavaScript pedig egyáltalán nincs.
+Ennek köszönhetően minden oldal egyetlen kéréssel betöltődik, a keresés egyszerű űrlapküldés, és mivel az oldal állapota az URL-ben van, a felület szkriptek nélkül is teljes értékűen működik.
+
+Minden oldal egy adatstruktúra, amelynek két formáját két külön mechanizmus adja.
+A JSON-formát a `serde` `Serialize` deriválása állítja elő, a HTML-formát pedig a `Page` trait, amelynek a `Serialize` a szupertraitje: az oldal a `title` metódusban a címét, a `content` metódusban a tartalmát adja meg, a `status` metódus pedig a válasz állapotkódját, amely alapértelmezetten 200.
+A közös `render` függvény az oldalt a fejléccel, a lábléccel és a stíluslapra mutató hivatkozással teljes HTML-dokumentummá egészíti ki, vagy JSON-ná alakítja.
+A kettő közül az `Accept` fejléc választ: ha szerepel benne a `text/html`, amelyet minden böngésző elküld, a válasz HTML, egyébként JSON.
+Mivel ugyanaz az URL kétféle választ adhat, minden válaszba `Vary: Accept` fejléc kerül, hogy egy gyorsítótár a kettőt ne keverje össze.
+Így egy új oldalhoz csak egy struktúrát és a `Page` trait két metódusát kell megírni, a JSON-forma magától adódik.
+A hibaoldalak is ugyanígy készülnek: a 404-es és az 500-as oldal csak a `status` metódust írja felül, így egy szkript a hibát is JSON-formában kapja meg.
+
+A HTML-t a `build_html` könyvtár builder mintájával állítom elő: az elemeket egymásra láncolt metódushívások (`with_attribute`, `with_html`, `with_paragraph`) építik fel, a végén pedig a `to_html_string` alakítja őket szöveggé.
+Sablonnyelvre és külön sablonfájlokra így nincs szükség, az oldalak szerkezete közönséges Rust-kód, amelyet a fordító ellenőriz.
+A könyvtár a beillesztett szöveget nem escape-eli, a megjelenített adatok -- a cím, a szerzők, a leírás -- viszont mind az EPUB-fájlokból jönnek, amelyeket bárki elkészíthetett.
+Ezért minden ilyen szöveget az `escape_html` függvényen vezetek át, mielőtt az oldalba kerül, így egy `<script>` elemet tartalmazó cím sem futtathat kódot a látogató böngészőjében (XSS).
+
+=== A stíluslap
+
+A megjelenésről egy saját, kb. 3,8 kB-os stíluslap gondoskodik, amelyet az `include_bytes!` makró a futtatható állományba fordít, így a programmal együtt nem kell külön fájlt terjeszteni.
+A stíluslap osztály nélküli: egyetlen kivétellel, a gombnak formázott hivatkozással, közvetlenül a HTML-elemeket formázza, ezért az oldalak kódjába nem kell osztályneveket írni.
+A világos és a sötét téma között a böngésző beállítása (`prefers-color-scheme`) alapján, szintén szkript nélkül vált.
+Mivel minden oldal ugyanazt a stíluslapot használja, a böngésző egy napig újrakérés nélkül a gyorsítótárából veszi (`Cache-Control: max-age=86400`).
+Kész, osztály nélküli stíluslap, például a Simple.css vagy a Pico.css helyett azért írtam sajátot, mert ezek sokféle elemre és helyzetre felkészülnek és így számomra feleslegesen sok dolgot tartalmaznak, a saját stíluslap viszont csak azt tartalmazza, amire az oldalaknak ténylegesen szükségük van.
 
 == Üzemeltetés
 
-#todo[parancssori kapcsolók; naplózás fájlba és a standard kimenetre; az állapotoldal (`/health`); a release profil]
+Az alkalmazás egyetlen futtatható állomány, amelyet négy parancssori kapcsoló állít be: a `--listen` a figyelt címet, a `--library` a könyvek mappáját, a `--database` az adatbázisfájlt, a `--log-file` pedig a naplófájlt adja meg.
+Mindegyiknek van alapértelmezése, a szerver például alapból csak a helyi gépről érhető el (`127.0.0.1:8080`).
+A naplózáshoz a `log` crate felületét egy saját naplózóval valósítom meg, amely minden sort időbélyeggel, a forráshellyel és a szinttel együtt a standard kimenetre és a naplófájl végére is kiír, így az előző futások naplója is megmarad.
+Ide kerül a sikertelen kérések oka is, amelyet a `Reply` trait naplóz, a kliens pedig csak az általános hibaoldalt kapja.
+
+A `/health` állapotoldal a futó verziót és a könyvek számát mutatja, ez utóbbit a `count` a rekordok beolvasása nélkül kérdezi le.
+Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy külső felügyeleti eszköz az állapotkódból vagy a JSON-formából is észleli a hibát.
 
 #pagebreak()
 
