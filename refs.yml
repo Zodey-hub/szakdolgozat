@@ -111,3 +111,25 @@ repub:
   url:
     value: https://github.com/Zodey-hub/repub
     date: 2026-11-26
+
+rfc6266:
+  type: Report
+  title: Use of the Content-Disposition Header Field in the Hypertext Transfer Protocol (HTTP)
+  author: "Reschke, Julian"
+  date: 2011-06
+  serial-number: RFC 6266
+  publisher: RFC Editor
+  url:
+    value: https://www.rfc-editor.org/rfc/rfc6266
+    date: 2026-11-26
+
+rfc5987:
+  type: Report
+  title: Character Set and Language Encoding for Hypertext Transfer Protocol (HTTP) Header Field Parameters
+  author: "Reschke, Julian"
+  date: 2010-08
+  serial-number: RFC 5987
+  publisher: RFC Editor
+  url:
+    value: https://www.rfc-editor.org/rfc/rfc5987
+    date: 2026-11-26

@@ -1117,7 +1117,31 @@ A találati oldal első sora azt is kiírja, hány jelöltet adott az index, eze
 
 == Borítóképek és letöltés
 
-#todo[a borító az EPUB-ból jön, nincs futásidejű képfeldolgozás; külön `Cover` tábla, hogy a listázás ne olvassa a képeket; engedélyezett képtípusok (SVG nem), `nosniff`; a letöltésnél a `view` csak a fájlnevet másolja ki a sorból; `Content-Disposition` (RFC 6266 és 5987)]
+=== Borítóképek
+
+A borítóképet az alkalmazás nem állítja elő és nem is alakítja át: indexeléskor az `epub` könyvtár a fájlban borítóként megjelölt képet adja vissza, és ez változatlanul kerül az adatbázisba.
+Futásidejű képfeldolgozás így nincs, kicsinyítés sem: a találati listában és a könyv oldalán ugyanaz a kép jelenik meg, a megjelenítés méretét pedig az `<img>` elem `width` attribútuma alapján a böngésző állítja be.
+Ennek köszönhetően nincs szükség képfeldolgozó könyvtárra, és egy borítókép kiszolgálása egyetlen adatbázis-olvasásból áll.
+
+A képek nem a `Book` rekordban, hanem egy külön `Cover` típus táblájában vannak.
+A keresés minden jelöltet beolvas és deszerializál, így ha a kép bájtjai a könyv rekordjában lennének, minden jelölttel együtt a képe is betöltődne, holott a találati oldal csak a kép címét tartalmazza.
+A `Book` rekordban ezért csak egy logikai mező (`has_cover`) jelzi, hogy van-e borítókép, így az oldal a `Cover` tábla olvasása nélkül dönthet az `<img>` elemről, a képet pedig a böngésző külön kérésben tölti le a `/cover` útvonalról.
+
+Mivel a kép típusát az EPUB-fájl készítője adja meg, azt is ellenőrizni kell.
+Csak JPEG, PNG, GIF és WebP borítót fogadok el, más típusnál a könyv borítókép nélkül kerül az adatbázisba.
+Az SVG azért maradt ki, mert a többivel ellentétben nem egyszerű kép: szkriptet is tartalmazhat, amely az oldal nevében futhatna.
+A válasz `Content-Type` fejléce a tárolt típus, mellé pedig egy `X-Content-Type-Options: nosniff` fejléc kerül, amely megtiltja a böngészőnek, hogy a bájtok tartalmából más típusra következtessen, így egy képnek jelölt HTML-fájlt sem jeleníthet meg oldalként.
+Mivel a könyv azonosítója újraindítás után is ugyanarra a könyvre mutat, a böngésző egy napig a gyorsítótárából is megjelenítheti a borítót (`Cache-Control: max-age=86400`).
+
+=== Letöltés
+
+A letöltéshez az adatbázisból csak a könyv fájlnevére van szükség, ezért ezt az adatbázisrétegnél bemutatott `view` metódussal olvasom ki: a closure csak a fájlnevet másolja ki az archivált sorból, a könyv többi mezőjét fel sem építi.
+A fájl elérési útja a könyvek mappájából és ebből a tárolt fájlnévből áll össze, a kérésből pedig csak az azonosító érkezik.
+Így a kliens nem adhat meg tetszőleges útvonalat, és a mappán kívüli fájlt sem tölthet le.
+A fájl egészben kerül a memóriába, onnan pedig a válasz törzsébe, mert a szerver nem támogatja a streamelést.
+
+A böngészőnek a `Content-Disposition` fejléc jelzi, hogy a fájlt mentse el, és milyen néven @rfc6266.
+Mivel a könyvek fájlneve gyakran ékezetes, a pontos név UTF-8 és százalékos kódolással a `filename*` paraméterbe kerül @rfc5987, a régebbi klienseknek szóló `filename` paraméterbe pedig egy ASCII-változat, amelyben minden más karaktert aláhúzás helyettesít.
 
 == A felhasználói felület
 
