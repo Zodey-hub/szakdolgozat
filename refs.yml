@@ -43,6 +43,24 @@ async-executor:
     value: https://github.com/smol-rs/async-executor
     date: 2026-11-23
 
+async-io:
+  type: Repository
+  title: "async-io: Async I/O and timers"
+  author: "Glavina, Stjepan"
+  version: 2.6.0
+  url:
+    value: https://github.com/smol-rs/async-io
+    date: 2026-11-26
+
+async-net:
+  type: Repository
+  title: "async-net: Async networking primitives for TCP/UDP/Unix communication"
+  author: "Glavina, Stjepan"
+  version: 2.0.0
+  url:
+    value: https://github.com/smol-rs/async-net
+    date: 2026-11-26
+
 rfc9293:
   type: Report
   title: Transmission Control Protocol (TCP)
@@ -123,13 +141,13 @@ rfc6266:
     value: https://www.rfc-editor.org/rfc/rfc6266
     date: 2026-11-26
 
-rfc5987:
+rfc8187:
   type: Report
-  title: Character Set and Language Encoding for Hypertext Transfer Protocol (HTTP) Header Field Parameters
+  title: Indicating Character Encoding and Language for HTTP Header Field Parameters
   author: "Reschke, Julian"
-  date: 2010-08
-  serial-number: RFC 5987
+  date: 2017-09
+  serial-number: RFC 8187
   publisher: RFC Editor
   url:
-    value: https://www.rfc-editor.org/rfc/rfc5987
+    value: https://www.rfc-editor.org/rfc/rfc8187
     date: 2026-11-26

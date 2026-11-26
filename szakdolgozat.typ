@@ -33,7 +33,10 @@
 #show heading.where(level: 1): it => (raw, table, image).map(k => counter(figure.where(kind: k)).update(0)).join() + it
 
 #show figure: set block(above: 1.5em, below: 1.5em)
-#show figure.where(kind: raw): set figure(supplement: [Kódrészlet]) // a Typst magyar fordításából hiányzik a kódrészlet szava, ezért angolul „Listing” lenne
+#show figure.where(kind: image): set figure(supplement: [ábra])
+#show figure.where(kind: table): set figure(supplement: [táblázat])
+#show figure.where(kind: raw): set figure(supplement: [kódrészlet])
+#show figure.caption: it => context [#it.counter.display(it.numbering). #it.supplement#it.separator#it.body] // magyarosan: „2.1. ábra: …”
 
 #show outline.entry: set text(size: 11pt)
 #show bibliography: set text(size: 10pt)
@@ -156,7 +159,7 @@ Az általánosság érdekében bevezetett absztrakciós rétegek futásidőben k
 Egy kisebb, jól körülhatárolt feladatot ellátó webalkalmazásnál a keretrendszer képességeinek nagy része kihasználatlan marad, a velük járó többletterhet viszont az alkalmazás ugyanúgy viseli.
 
 A Rust nyelv jó alapot ad ahhoz, hogy ez a kompromisszum újragondolható legyen.
-Futásidejű környezet és szemétgyűjtő nélkül, a C és a C++ nyelvhez hasonló teljesítményű gépi kódra fordul, a memóriabiztonságot pedig fordítási időben garantálja.
+Futásidejű környezet és szemétgyűjtő nélkül, a C és a C++ nyelvhez hasonló teljesítményű gépi kódra fordul, a memóriabiztonságot pedig fordítási időben garantálja (@rust-book).
 Az ökoszisztéma ráadásul erősen moduláris: egy webes rendszer alsó rétegei kicsi, egyetlen feladatra összpontosító könyvtárakból is felépíthetők anélkül, hogy egy teljes keretrendszert kellene átvenni.
 A függőségek száma önmagában nem hátrány: a jól megválogatott, kis könyvtárak párhuzamosan fordíthatók, külön-külön cserélhetők, és az alkalmazásba csak az kerül be, amire valóban szükség van.
 Dolgozatom kiinduló kérdése ezért az, hogy milyen teljesítmény és méret érhető el, ha a webalkalmazás alapjait -- a HTTP-szervert, az adattárolást és a felület előállítását -- nem kész keretrendszer adja, hanem kifejezetten erre a célra tervezett, gondosan megválogatott, kis könyvtárakra épülő saját megoldás.
@@ -172,14 +175,15 @@ Dolgozatom célja egy olyan, Rust nyelven írt webes keretrendszer megtervezése
 #par(first-line-indent: 0em)[A munkám két fő területet ölel fel:]
 
 - *HTTP-szerver:* A hálózati réteget a nulláról írom meg, a smol aszinkron futtatókörnyezet építőelemeire (async-executor, async-io, async-net) építve.
-  Külső könyvtárat csak a kérések elemzéséhez (httparse), a protokoll alapvető típusainak leírásához (http) és a bájtpufferekhez (bytes) használok, így elkerülöm a nagy webes keretrendszerek többletterhét.
+  A protokoll kezeléséhez csak három kis könyvtárat használok: a kérések elemzéséhez a httparse-ot, a protokoll alapvető típusainak leírásához a http-t, a bájtpufferekhez pedig a bytes-ot, így elkerülöm a nagy webes keretrendszerek többletterhét.
 - *Adatbázisréteg:* Az adatok tárolására saját adatbázisréteget készítek, amely a redb beágyazott kulcs--érték tárolóra és az rkyv zero-copy szerializációs keretrendszerre épül.
   A tárolt rekordok deszerializálás és másolás nélkül, közvetlenül Rust-struktúraként is olvashatók: a nyers bájtokat csak validálni kell, új memóriaterületet nem kell foglalni számukra.
 
 #h(1.5em)
 
 Mindkét könyvtár önálló, bármilyen projektben használható.
-A gyakorlati használhatóságukat egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni illetve letölteni.
+A címben szereplő keretrendszeren ezért e két könyvtár együttesét értem: nem egyetlen, mindent magában foglaló csomagot, hanem egymástól függetlenül is használható építőelemeket, amelyekből egy webalkalmazás alapjai összerakhatók.
+A gyakorlati használhatóságukat egy bemutató alkalmazással igazolom: egy publikus weboldal, amelyen EPUB formátumú elektronikus könyvek között lehet keresni, illetve letölteni.
 Az oldalakat az alkalmazás a szerveren állítja elő: a HTML-t a Rust nyelvben elterjedt builder-mintára épülő generátor hozza létre, a stílusokról pedig egy saját, a programba fordított stíluslap gondoskodik, így a böngészőnek kész oldalakat kell megjelenítenie, kliensoldali JavaScriptre pedig nincs is szükség.
 Az alkalmazást szándékosan egyszerűre tervezem, mert a dolgozat hangsúlya nem rajta, hanem az alatta lévő rétegek megvalósításán van.
 Feladata az, hogy a keretrendszer valamennyi elemét valós körülmények között használja.
@@ -206,6 +210,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 // ---------- Felhasznált technológiák ----------
 // terjedelem: kb. 7 oldal
+// itt az általános fogalom szerepeljen, a tervezési döntés a későbbi fejezetekben, előrehivatkozással
 
 = Felhasznált technológiák
 
@@ -213,11 +218,11 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === Memóriakezelés és biztonság
 
-#todo[tulajdonjog és kölcsönzés (borrow checker), memóriabiztonság fordítási időben, nincs szemétgyűjtő és futásidejű környezet]
+#todo[tulajdonjog és kölcsönzés (borrow checker), élettartamok, memóriabiztonság fordítási időben, nincs szemétgyűjtő és futásidejű környezet; a szálak közötti megosztás: `Send`, `Sync`, `'static` és `Arc`]
 
 === Absztrakciók és hibakezelés
 
-#todo[zero-cost abstraction és monomorfizáció (ennek ára: a kódméret); traitek és generikus API-k, amelyekre a könyvtárak épülnek (`Handler`, `Record`); a `Result`, a `?` operátor és a `panic`; könyvtárban saját hibatípus (thiserror), alkalmazásban anyhow]
+#todo[traitek és generikus API-k, amelyekre a könyvtárak épülnek (`Handler`, `Record`), closure-ök; a monomorfizáció és ára (a kódméret), ha a méretmérés épít rá; a `Result`, a `?` operátor és a `panic`; könyvtárban saját hibatípus (thiserror), alkalmazásban anyhow]
 
 === Cargo és a fordítási profilok
 
@@ -231,17 +236,17 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === Future, executor és reaktor
 
-#todo[`Future`, `async`/`await`, az állapotgép, amivé a fordító alakítja; az executor és a reaktor feladata; az operációs rendszer eseményfigyelője (epoll)]
+#todo[`Future`, `async`/`await`; az executor és a reaktor feladata (a reaktor az operációs rendszer eseményfigyelőjére épül, ezt elég röviden)]
 
 === A smol és építőelemei
 
-#todo[a smol kis, önálló crate-ekből áll (async-executor, async-io, async-net, futures-lite, async-channel), és ezek közvetlenül is használhatók, így csak az kerül a programba, ami kell; egy executor több szálon (a szálak ugyanabból a sorból veszik a taskokat)]
+#todo[a smol kis, önálló crate-ekből áll (async-executor, async-io, async-net, futures-lite, async-channel), és ezek közvetlenül is használhatók, így csak az kerül a programba, ami kell; az async-io reaktora, `Timer`-e és `block_on`-ja, az async-net `TcpListener`-e; egy executor több szálon (közös és szálankénti sorok, a szálak egymástól is átvehetnek taskot)]
 
 == A HTTP/1.1 protokoll
 
 === Az üzenetek és a keretezés
 
-#todo[a kérés (kérősor, fejlécek, törzs) és a válasz felépítése, a `HEAD` metódus; a TCP-ben nincs „üzenet vége” jel: a fejléc végét az üres sor, a törzs hosszát a `Content-Length` vagy a `Transfer-Encoding: chunked` adja meg]
+#todo[a kérés (kéréssor, fejlécek, törzs) és a válasz felépítése, a `HEAD` metódus; a TCP-ben nincs „üzenet vége” jel: a fejléc végét az üres sor, a törzs hosszát a `Content-Length` vagy a `Transfer-Encoding: chunked` adja meg]
 
 === Tartós kapcsolatok és request smuggling
 
@@ -251,7 +256,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === Beágyazott adatbázisok és a redb
 
-#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (copy-on-write B-fa, ACID tranzakciók, egyetlen író és párhuzamos olvasók pillanatképpel; név szerinti táblák és multimap táblák; a `&[u8]` kulcsok bájtonkénti, lexikografikus összehasonlítása és a rendezett tartománybejárás, erre épül a kulcskódolás); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
+#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (lapokra osztott fájl, copy-on-write B-fa röviden, mert ez teszi lehetővé, hogy egyetlen író mellett a párhuzamos olvasók pillanatképet lássanak; tranzakciók; név szerinti táblák és multimap táblák; a `&[u8]` kulcsok bájtonkénti, lexikografikus összehasonlítása és a rendezett tartománybejárás, erre épül a kulcskódolás); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
 
 === Zero-copy szerializáció és az rkyv
 
@@ -270,7 +275,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 == Hatókör és programozói felület
 
-=== Hatókör
+=== Hatókör <sec:hatokor>
 
 A HTTP-szervert önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-http-server` néven a crates.io-n is közzétettem (@tiny-http-server).
 A könyvtár csak a protokollkezelésért felel: a TCP-kapcsolaton érkező bájtokból HTTP-kéréseket állít elő, átadja őket a kezelőnek, a kapott választ pedig visszaírja a hálózati kapcsolatra.
@@ -380,6 +385,11 @@ Mivel a fordító garantálja, hogy a hatókör végéig minden elindított szá
 Ha a kapcsolatok fogadása valamilyen hiba miatt leáll, a hívó szál lezár egy vezérlőcsatornát, amelyre a munkaszálak várakoznak.
 Ennek hatására a szálak kilépnek, a még nyitott kapcsolatok az executorral együtt megszűnnek, a `run` metódus pedig csak ezután adja vissza a hibát.
 
+Az executor csak a taskok ütemezéséért felel, a hálózatra és az időre való várakozás a smol két másik építőelemének feladata.
+A kapcsolatokat az async-net `TcpListener` típusa fogadja (@async-net), az időkorlátokat pedig az async-io `Timer` típusa méri (@async-io).
+Mindkettő az async-io reaktorára épül, amely az operációs rendszertől tudja meg, melyik kapcsolaton érkezett adat, és melyik időzítő járt le, majd felébreszti a rájuk várakozó taskokat.
+A hívó szál és a munkaszálak a saját aszinkron ciklusukat szintén az async-io `block_on` függvényével futtatják.
+
 === Kapcsolatonként egy task
 
 Minden kapcsolathoz egy task tartozik, amely a kapcsolat élettartama alatt egymás után olvassa be és szolgálja ki a kéréseket.
@@ -480,7 +490,7 @@ Ugyanakkor amíg a kérés bármelyik része -- például egy elmentett fejléc�
   caption: [A fejléc leválasztása és a zero-copy részszeletek],
 ) <lst:fejlec>
 
-A fejlécet a `httparse` ezért kétszer elemzi, két különböző célból.
+A fejlécet a `httparse` valójában kétszer elemzi, két különböző célból.
 Az első elemzés csak a fejléc végét keresi meg: a beolvasás közben, a `BytesMut` pufferen fut, és a fejléc hosszát adja vissza.
 Ez az elemzés többször is lefuthat, minden hálózati olvasás után elölről indul, amíg a fejléc teljes nem lesz.
 Az eredményében kapott szeletek ilyenkor a pufferbe mutatnak, ezért nem tarthatók meg.
@@ -631,8 +641,8 @@ Hátránya, hogy a kezelő a `HEAD` kéréseknél is előállítja a teljes tör
 
 A kapcsolat kiszolgálása közben felmerülő hibákat egy belső `Error` enum írja le, amely nem része a könyvtár publikus felületének.
 Az ilyen hibák sosem jutnak el a szerver hívójáig: mindig az adott kapcsolat lezárásával végződnek, a többi kapcsolatot pedig nem érintik.
-
 A belső hibákat a `client_status` metódus két csoportra osztja: minden hibaváltozathoz vagy egy HTTP-státuszkódot rendel, vagy üres értéket ad vissza.
+
 - *Protokollhibák:* A kliens hibás formátumú vagy a méretkorlátokat túllépő kérést küldött, maga a hálózati kapcsolat azonban még él.
   Ilyenkor a szerver egy törzs nélküli státuszválaszt küld, hogy a kliens értesüljön az elutasítás okáról: a korlátok és a törzs hossza miatti elutasításoknál a @tbl:korlatok. és a @tbl:hossz. táblázatban szereplő kódot, a hibás formátumú kérésre `400 Bad Request`-et.
   A hibaüzenet elküldése után a szerver lezárja a kapcsolatot, hiszen egy hibásan keretezett kérés után már nem állapítható meg biztosan, hol kezdődik a következő.
@@ -683,44 +693,45 @@ A @tbl:tablak. táblázat egy `User` típus négy rekordját mutatja a név, az 
 Egy indexelt lekérdezés két lépésben zajlik: a könyvtár először az indextáblából kikeresi a kulcshoz tartozó azonosítókat, majd ezek alapján a sortáblából betölti a rekordokat.
 
 #figure(
-  stack(
-    spacing: 1em,
-    table(
-      columns: 4,
-      table.header[`users` (id)][name][age][tags],
-      [1], [Alice], [30], [admin, staff],
-      [2], [Bob], [18], [--],
-      [3], [Carol], [30], [admin, dev],
-      [4], [Alice], [65], [--],
-    ),
-    grid(
-      columns: 3,
-      column-gutter: 1em,
+  {
+    stack(
+      spacing: 1em,
       table(
-        columns: 2,
-        table.header[`users.name`][azonosítók],
-        [Alice], [1, 4],
-        [Bob], [2],
-        [Carol], [3],
+        columns: 4,
+        table.header[`users` (id)][name][age][tags],
+        [1], [Alice], [30], [admin, staff],
+        [2], [Bob], [18], [--],
+        [3], [Carol], [30], [admin, dev],
+        [4], [Alice], [65], [--],
       ),
-      table(
-        columns: 2,
-        table.header[`users.age`][azonosítók],
-        [18], [2],
-        [30], [1, 3],
-        [65], [4],
+      grid(
+        columns: 3,
+        column-gutter: 1em,
+        table(
+          columns: 2,
+          table.header[`users.name`][azonosítók],
+          [Alice], [1, 4],
+          [Bob], [2],
+          [Carol], [3],
+        ),
+        table(
+          columns: 2,
+          table.header[`users.age`][azonosítók],
+          [18], [2],
+          [30], [1, 3],
+          [65], [4],
+        ),
+        table(
+          columns: 2,
+          table.header[`users.tag`][azonosítók],
+          [admin], [1, 3],
+          [dev], [3],
+          [staff], [1],
+        ),
       ),
-      table(
-        columns: 2,
-        table.header[`users.tag`][azonosítók],
-        [admin], [1, 3],
-        [dev], [3],
-        [staff], [1],
-      ),
-    ),
-  ),
-  placement: auto,
-  caption: [Négy rekord a sortáblában és három indextáblájuk (a kulcsok a kódolás előtti értékükkel)],
+    )
+  },
+  caption: [Négy rekord a sortáblában és egymezős indexeik táblái (a kulcsok a kódolás előtti értékükkel)],
 ) <tbl:tablak>
 
 === A `Record` trait
@@ -731,7 +742,7 @@ A `TABLE` konstans a sortábla nevét adja meg.
 Azért asszociált konstans és nem metódus, mert a tábla nevére példány nélkül is szükség van: egy `get::<User>(1)` hívásnál még nincs rekord, a könyvtárnak mégis tudnia kell, honnan olvasson.
 Az `id` a rekord azonosítóját adja vissza; ezt mindig a hívó választja meg, automatikusan növekvő azonosítót a könyvtár nem generál.
 Az `index_keys` a rekord indexbejegyzéseit adja vissza index és kódolt kulcs párokként, egy többértékű mező (mint a címkék) minden értékéhez egy-egy párt.
-A kulcsok kódolását a következő alfejezet tárgyalja.
+A kulcsok kódolását a @sec:kodolas alfejezet tárgyalja.
 A trait szupertraitjei az `rkyv` szerializáló és validáló traitjei, ezeket a `derive` makró adja.
 
 #figure(
@@ -771,7 +782,6 @@ A trait szupertraitjei az `rkyv` szerializáló és validáló traitjei, ezeket 
       }
   }
   ```,
-  placement: auto,
   caption: [A `User` rekordtípus és indexei],
 ) <lst:user>
 
@@ -790,7 +800,7 @@ Az index nélküli típusokhoz a könyvtár egy változatok nélküli `NoIndex` 
 A pont elválasztó szerepe miatt sem a tábla, sem az index neve nem tartalmazhat pontot, különben két különböző index táblája azonos nevet kaphatna.
 A táblanevet a könyvtár fordítási időben ellenőrzi, az index nevét futásidőben, minden használatkor, így egy hibás név már az első használatkor `InvalidIndexName` hibát ad.
 
-== Rendezéstartó kulcskódolás
+== Rendezéstartó kulcskódolás <sec:kodolas>
 
 Az indextáblák kulcsai nyers bájtsorozatok, amelyeket a `redb` bájtról bájtra, balról jobbra haladva hasonlít össze.
 Egyenlőségkereséshez elég lenne, ha azonos érték mindig azonos bájtokat adna, a tartománylekérdezés viszont az indextábla egy összefüggő szakaszát járja be, ezért a bájtok sorrendjének meg kell egyeznie az értékek természetes sorrendjével.
@@ -825,11 +835,11 @@ A `usize` és az `isize` típusokhoz szándékosan nem tartozik kódolás: a mé
 === Sztringek
 
 A sztringek és a bájtszeletek változó hosszúságúak, ezért a kódolásuknak azt is jeleznie kell, hol érnek véget.
-Erre akkor van szükség, ha egy összetett kulcs több egymás után fűzött mezőből áll: végjel nélkül például a `("a", "bc")` és az `("ab", "c")` pár ugyanazt a `61 62 63` bájtsorozatot adná.
+Erre akkor van szükség, ha egy összetett kulcs több egymás után fűzött mezőből áll: lezáró nélkül például az `("a", "bc")` és az `("ab", "c")` pár ugyanazt a `61 62 63` bájtsorozatot adná.
 A hossz előreírása sem megoldás, mert akkor az határozná meg a rendezést, így a `"b"` az `"ab"` elé kerülne.
 Az `enc` ezért minden sztring végére `00 01` lezárót ír.
 A `00` a legkisebb bájtérték, így a rövidebb sztring mindig megelőzi a folytatását (az `"a"` az `"ab"` elé kerül).
-Egy Rust-sztring viszont maga is tartalmazhat `00` bájtot, amely hamis végjelnek látszana, ezért ezeket `00 FF` sorozatra cserélem.
+Egy Rust-sztring viszont maga is tartalmazhat `00` bájtot, amely hamis lezárónak látszana, ezért ezeket `00 FF` sorozatra cserélem.
 A `00` után így mindig a következő bájt dönti el, hogy a sztring véget ért (`01`), vagy valódi nulla bájt következik (`FF`).
 Mivel a `01` kisebb az `FF`-nél, a lezárt sztring itt is a folytatódó elé kerül (@tbl:sztring. táblázat).
 
@@ -845,9 +855,9 @@ Mivel a `01` kisebb az `FF`-nél, a lezárt sztring itt is a folytatódó elé k
   caption: [Sztringek kódolása a bájtjaik szerint rendezve],
 ) <tbl:sztring>
 
-=== Összetett kulcsok és előtagok
+=== Összetett kulcsok és előtagok <sec:osszetett>
 
-Mivel a számok kódolása rögzített hosszúságú, a sztringeké pedig végjellel zárul, egyetlen érték kódolása sem lehet egy másik, azonos típusú érték kódolásának előtagja.
+Mivel a számok kódolása rögzített hosszúságú, a sztringeké pedig lezáróval zárul, egyetlen érték kódolása sem lehet egy másik, azonos típusú érték kódolásának előtagja.
 Ezért több mező kódolása egyszerűen egymás után fűzhető: az `enc` legfeljebb négyelemű tuple-öket is elfogad, és a tagok kódolását összefűzve összetett kulcsot képez.
 Az `("Alice", 30u8)` kódja például `41 6C 69 63 65 00 01 1E`, amelyben a név lezárója után közvetlenül az életkor bájtja áll.
 Egy ilyen index először az első, azon belül a második mező szerint rendezett, és egy tartománylekérdezés ebben a sorrendben járja be a két határ közötti kulcsokat (@lst:osszetett. kódrészlet).
@@ -886,7 +896,7 @@ Az `insert` csak egy egyelemű tömbbel hívja meg az `insert_many`-t, így a be
 Külön frissítő művelet (update) nincs: ha az azonosító már foglalt, az új rekord felülírja a régit.
 Törölni a `delete` és a `delete_many` metódussal lehet, az utóbbi azt is visszaadja, hogy a megadott azonosítók közül hány létezett.
 
-Az `insert_many` létjogosultságát a tranzakciók lezárásának költsége adja.
+Az `insert_many` létjogosultságát a tranzakciók véglegesítésének költsége adja.
 A `redb` a `commit` hívásakor lemezre szinkronizálja a fájlt, hogy a véglegesített adatok egy áramszünetet is túléljenek, és ez az írás leglassabb lépése.
 Ha a hívó sok rekordot egyesével szúr be, minden rekord után külön szinkronizálás történik, az `insert_many` viszont az egész köteget egyetlen `commit` hívással véglegesíti.
 
@@ -1008,7 +1018,7 @@ Minden más táblanyitási hiba, például ha a név alatt más típusú tábla 
 === Cél és útvonalak
 
 A két könyvtár használhatóságát a `repub` nevű alkalmazással mutatom be (@repub).
-Ez egy publikus weboldal, amely egy könyvtár (mappa) EPUB-fájljait teszi kereshetővé és letölthetővé: a könyvek között metaadataik, például cím, szerző vagy kiadási év szerint lehet keresni, mindegyiknek saját oldala van a borítójával és a részleteivel, és innen maga a fájl is letölthető.
+Ez egy publikus weboldal, amely egy mappa EPUB-fájljait teszi kereshetővé és letölthetővé: a könyvek között metaadataik, például cím, szerző vagy kiadási év szerint lehet keresni, mindegyiknek saját oldala van a borítójával és a részleteivel, és innen maga a fájl is letölthető.
 Az oldal útvonalait a @tbl:utvonalak. táblázat foglalja össze.
 Minden oldal kétféle formában érhető el: a böngésző HTML-t kap, minden más kliens, például a curl vagy egy szkript, ugyanazon az útvonalon JSON-t.
 
@@ -1036,7 +1046,7 @@ Az alkalmazáson belül is csak egyetlen modul olvas EPUB-fájlt, a többi már 
 
 - `app`: a parancssori kapcsolók, a naplózás és az indítás;
 - `library`: az EPUB-fájlok beolvasása és indexelése az adatbázisba;
-- `router`: az útvonalak, vagyis minden útvonal és a hozzá tartozó oldal egy helyen;
+- `router`: az útvonalválasztás, vagyis minden útvonal és a hozzá tartozó függvény (végpont) egy helyen;
 - `pages`: az oldalak, amelyeknek HTML és JSON formájuk is van;
 - `files`: a borítókép, a letöltés és a stíluslap, amelyeknek csak egy formájuk van;
 - `reply`: a végpontok eredményét a `Reply` trait alakítja válasszá: a `None`-ból 404-es oldal, a hibából naplózás után 500-as oldal lesz, így minden hiba egy helyen végződik.
@@ -1044,11 +1054,11 @@ Az alkalmazáson belül is csak egyetlen modul olvas EPUB-fájlt, a többi már 
 #h(1.5em)
 
 Induláskor az `app` modul először a `library` segítségével felépíti az adatbázist, majd elindítja a szervert.
-A szerver kezelője maga a `Router` típus, amely a @lst:handler. kódrészletben bemutatott `Handler` traitet valósítja meg, és állapotként az adatbázist és a könyvek mappájának útvonalát tárolja.
+A szerver kezelője maga a `Router` típus, amely a @lst:handler. kódrészletben bemutatott `Handler` traitet valósítja meg, és állapotként az adatbázist és a könyvek mappájának elérési útját tárolja.
 A `handle` metódus az `Accept` fejlécből meghatározza a válasz formáját, majd a metódus, az útvonal és az `id` paraméter hármasára illesztve kiválasztja a végpontot.
 Ha a metódus nem `GET`, az útvonal ismeretlen, vagy egy könyvhöz kötött útvonalon hiányzik az érvényes `id`, a kliens a „nem található” oldalt kapja.
 
-== A könyvtár indexelése
+== A könyvek indexelése
 
 === A metaadatok kinyerése
 
@@ -1062,7 +1072,7 @@ A leírás gyakran HTML-kódot tartalmaz, ebből csak a szöveget tartom meg: a 
 
 === Az azonosító
 
-A könyv azonosítója a fájlnevének 64 bites FNV-1a hash-e, 53 bitre csonkolva.
+A könyv azonosítója a fájlnevének 64 bites FNV-1a hasítóértéke, 53 bitre csonkolva.
 Mivel csak a fájlnévtől függ, egy könyv minden újraindításkor ugyanazt az azonosítót kapja, így a rá mutató linkek (`/book?id=…`) is érvényesek maradnak.
 
 Az 53 bites csonkolásra a JSON-válaszok miatt van szükség.
@@ -1073,10 +1083,10 @@ Ha két fájlnév mégis ugyanazt az azonosítót kapja, a második fájl kimara
 
 A beolvasás előtt az alkalmazás törli az előző futásból megmaradt adatbázisfájlt, így az adatbázis minden induláskor üresen kezd, és teljes egészében a könyvek mappájából épül fel.
 Ennek köszönhetően az adatok egyetlen hiteles forrása (single source of truth) maga a fájlrendszer, az adatbázis pedig csak gyorsítótárként szolgál.
-Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani.
+Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani (lásd az adatbázisréteg @sec:sema alfejezetét).
 Egy sérült vagy olvashatatlan fájl sem akadályozza meg az indulást: az alkalmazás átugorja, és figyelmeztetést ír róla a naplóba.
 
-A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással: egyszer a könyvek, egyszer a borítóképek.
+A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással (lásd az adatbázisréteg @sec:iras alfejezetét): egyszer a könyvek, egyszer a borítóképek.
 Így a teljes indexelés két tranzakcióból és két fájlszinkronizálásból áll, és nem könyvenként kell egy-egy tranzakciót lezárni.
 
 Végül a `Book` típus kereshetőségét az indexbejegyzései biztosítják.
@@ -1090,7 +1100,7 @@ A nyelv indexébe csak a nyelvi címke elsődleges része kerül (például `en-
 A kezdőlapon egy keresőűrlap található, amelynek nyolc mezője a cím, a szerző, a fordító, a témakör, a kiadó, a nyelv, valamint a kiadási év alsó és felső határa.
 Egyik mező kitöltése sem kötelező, egy könyv pedig akkor kerül a találatok közé, ha minden kitöltött feltételnek megfelel.
 Az űrlap egyszerű `GET` kérést küld, így a feltételek a `/search` útvonal lekérdezési paramétereibe kerülnek, és a találati listának is saját, megosztható URL-je van.
-Az üresen hagyott vagy csak írásjelekből álló mező, illetve a számként nem értelmezhető évszám nem számít feltételnek, és ha egyetlen feltétel sem marad, az oldal nem a teljes könyvtárat listázza, hanem üres marad.
+Az üresen hagyott vagy csak írásjelekből álló mező, illetve a számként nem értelmezhető évszám nem számít feltételnek, és ha egyetlen feltétel sem marad, az oldal nem az összes könyvet listázza, hanem üres marad.
 
 A keresett szöveget az alkalmazás ugyanazzal a `text` modullal normalizálja, amellyel indexeléskor a könyvek mezőit: kisbetűsíti, elhagyja belőle az ékezeteket, és szavakra bontja.
 Mivel a két oldal ugyanazokat a függvényeket hívja, a keresett szó és az indexkulcs formája nem térhet el egymástól, így a „Jókai” és a „jokai” keresés ugyanazt az eredményt adja.
@@ -1105,9 +1115,9 @@ Több index eredményének metszetére nincs szükség: ha a jelöltek száma ki
 
 Az indexet rögzített sorrendben, a várhatóan legszelektívebb feltétel szerint választom ki.
 Ha van szöveges feltétel, az első kitöltött szöveges mező (a cím, a szerző, a fordító, a témakör és a kiadó sorrendjében) első szava adja a jelölteket.
-Ebből a `prefix_range` készít kulcstartományt, a `range` pedig a mező indexéből minden olyan könyvet visszaad, amelynek valamelyik szava ezzel az előtaggal kezdődik.
+Ebből a `prefix_range` készít kulcstartományt (lásd az adatbázisréteg @sec:osszetett. alfejezetét), a `range` pedig a mező indexéből minden olyan könyvet visszaad, amelynek valamelyik szava ezzel az előtaggal kezdődik.
 Egy könyv akkor is csak egyszer szerepel a jelöltek között, ha több szava is illeszkedik, mert a `range` az ismétlődéseket kiszűri.
-Egy szó eleje jellemzően kevés könyvre illeszkedik, egy nyelv viszont a könyvtár nagy részére is, ezért a nyelv indexét (`find` az elsődleges nyelvi címkére) csak akkor használom, ha nincs szöveges feltétel, az évekét pedig csak akkor, ha a felhasználó kizárólag évet adott meg.
+Egy szó eleje jellemzően kevés könyvre illeszkedik, egy nyelv viszont a könyvek nagy részére is, ezért a nyelv indexét (`find` az elsődleges nyelvi címkére) csak akkor használom, ha nincs szöveges feltétel, az évekét pedig csak akkor, ha a felhasználó kizárólag évet adott meg.
 
 A `/search?author=jok&language=hu` kérésnél például a szerzők indexének „jok” kezdetű kulcsai adják a jelölteket, és ezek közül a memóriában a magyar nyelvűek maradnak meg.
 A jelölteken minden feltételt újra ellenőrzök, azt is, amelyik az indexet kiválasztotta, mert az index csak a feltétel első szavát vette figyelembe.
@@ -1124,7 +1134,7 @@ Futásidejű képfeldolgozás így nincs, kicsinyítés sem: a találati listáb
 Ennek köszönhetően nincs szükség képfeldolgozó könyvtárra, és egy borítókép kiszolgálása egyetlen adatbázis-olvasásból áll.
 
 A képek nem a `Book` rekordban, hanem egy külön `Cover` típus táblájában vannak.
-A keresés minden jelöltet beolvas és deszerializál, így ha a kép bájtjai a könyv rekordjában lennének, minden jelölttel együtt a képe is betöltődne, holott a találati oldal csak a kép címét tartalmazza.
+A keresés minden jelöltet beolvas és deszerializál, így ha a kép bájtjai a könyv rekordjában lennének, minden jelölttel együtt a képe is betöltődne, holott a találati oldal csak a kép URL-jét tartalmazza.
 A `Book` rekordban ezért csak egy logikai mező (`has_cover`) jelzi, hogy van-e borítókép, így az oldal a `Cover` tábla olvasása nélkül dönthet az `<img>` elemről, a képet pedig a böngésző külön kérésben tölti le a `/cover` útvonalról.
 
 Mivel a kép típusát az EPUB-fájl készítője adja meg, azt is ellenőrizni kell.
@@ -1135,13 +1145,13 @@ Mivel a könyv azonosítója újraindítás után is ugyanarra a könyvre mutat,
 
 === Letöltés
 
-A letöltéshez az adatbázisból csak a könyv fájlnevére van szükség, ezért ezt az adatbázisrétegnél bemutatott `view` metódussal olvasom ki: a closure csak a fájlnevet másolja ki az archivált sorból, a könyv többi mezőjét fel sem építi.
+A letöltéshez az adatbázisból csak a könyv fájlnevére van szükség, ezért ezt az adatbázisrétegnél bemutatott `view` metódussal olvasom ki (@tbl:view. táblázat): a closure csak a fájlnevet másolja ki az archivált sorból, a könyv többi mezőjét fel sem építi.
 A fájl elérési útja a könyvek mappájából és ebből a tárolt fájlnévből áll össze, a kérésből pedig csak az azonosító érkezik.
-Így a kliens nem adhat meg tetszőleges útvonalat, és a mappán kívüli fájlt sem tölthet le.
-A fájl egészben kerül a memóriába, onnan pedig a válasz törzsébe, mert a szerver nem támogatja a streamelést.
+Így a kliens nem adhat meg tetszőleges elérési utat, és a mappán kívüli fájlt sem tölthet le.
+A fájl egészben kerül a memóriába, onnan pedig a válasz törzsébe, mert a szerver nem támogatja a törzsek folyamatos továbbítását (lásd a HTTP-szerver @sec:hatokor. alfejezetét).
 
-A böngészőnek a `Content-Disposition` fejléc jelzi, hogy a fájlt mentse el, és milyen néven @rfc6266.
-Mivel a könyvek fájlneve gyakran ékezetes, a pontos név UTF-8 és százalékos kódolással a `filename*` paraméterbe kerül @rfc5987, a régebbi klienseknek szóló `filename` paraméterbe pedig egy ASCII-változat, amelyben minden más karaktert aláhúzás helyettesít.
+A böngészőnek a `Content-Disposition` fejléc jelzi, hogy a fájlt mentse el, és milyen néven (@rfc6266).
+Mivel a könyvek fájlneve gyakran ékezetes, a pontos név UTF-8 és százalékos kódolással a `filename*` paraméterbe kerül (@rfc8187), a régebbi klienseknek szóló `filename` paraméterbe pedig egy ASCII-változat, amelyben minden más karaktert aláhúzás helyettesít.
 
 == A felhasználói felület
 
@@ -1154,14 +1164,14 @@ Minden oldal egy adatstruktúra, amelynek két formáját két külön mechanizm
 A JSON-formát a `serde` `Serialize` deriválása állítja elő, a HTML-formát pedig a `Page` trait, amelynek a `Serialize` a szupertraitje: az oldal a `title` metódusban a címét, a `content` metódusban a tartalmát adja meg, a `status` metódus pedig a válasz állapotkódját, amely alapértelmezetten 200.
 A közös `render` függvény az oldalt a fejléccel, a lábléccel és a stíluslapra mutató hivatkozással teljes HTML-dokumentummá egészíti ki, vagy JSON-ná alakítja.
 A kettő közül az `Accept` fejléc választ: ha szerepel benne a `text/html`, amelyet minden böngésző elküld, a válasz HTML, egyébként JSON.
-Mivel ugyanaz az URL kétféle választ adhat, minden válaszba `Vary: Accept` fejléc kerül, hogy egy gyorsítótár a kettőt ne keverje össze.
+Mivel ugyanaz az URL kétféle választ adhat, minden oldal válaszába `Vary: Accept` fejléc kerül, hogy egy gyorsítótár a kettőt ne keverje össze.
 Így egy új oldalhoz csak egy struktúrát és a `Page` trait két metódusát kell megírni, a JSON-forma magától adódik.
 A hibaoldalak is ugyanígy készülnek: a 404-es és az 500-as oldal csak a `status` metódust írja felül, így egy szkript a hibát is JSON-formában kapja meg.
 
 A HTML-t a `build_html` könyvtár builder mintájával állítom elő: az elemeket egymásra láncolt metódushívások (`with_attribute`, `with_html`, `with_paragraph`) építik fel, a végén pedig a `to_html_string` alakítja őket szöveggé.
 Sablonnyelvre és külön sablonfájlokra így nincs szükség, az oldalak szerkezete közönséges Rust-kód, amelyet a fordító ellenőriz.
-A könyvtár a beillesztett szöveget nem escape-eli, a megjelenített adatok -- a cím, a szerzők, a leírás -- viszont mind az EPUB-fájlokból jönnek, amelyeket bárki elkészíthetett.
-Ezért minden ilyen szöveget az `escape_html` függvényen vezetek át, mielőtt az oldalba kerül, így egy `<script>` elemet tartalmazó cím sem futtathat kódot a látogató böngészőjében (XSS).
+A könyvtár a beillesztett szövegben magától nem cseréli le a HTML-ben különleges jelentésű karaktereket (például a `<` jelet), a megjelenített adatok -- a cím, a szerzők, a leírás -- viszont mind az EPUB-fájlokból jönnek, amelyeket bárki elkészíthetett.
+Ezért minden ilyen szöveget a könyvtár `escape_html` függvényén vezetek át, mielőtt az oldalba kerül, így egy `<script>` elemet tartalmazó cím sem futtathat kódot a látogató böngészőjében (XSS).
 
 === A stíluslap
 
@@ -1169,17 +1179,16 @@ A megjelenésről egy saját, kb. 3,8 kB-os stíluslap gondoskodik, amelyet az `
 A stíluslap osztály nélküli: egyetlen kivétellel, a gombnak formázott hivatkozással, közvetlenül a HTML-elemeket formázza, ezért az oldalak kódjába nem kell osztályneveket írni.
 A világos és a sötét téma között a böngésző beállítása (`prefers-color-scheme`) alapján, szintén szkript nélkül vált.
 Mivel minden oldal ugyanazt a stíluslapot használja, a böngésző egy napig újrakérés nélkül a gyorsítótárából veszi (`Cache-Control: max-age=86400`).
-Kész, osztály nélküli stíluslap, például a Simple.css vagy a Pico.css helyett azért írtam sajátot, mert ezek sokféle elemre és helyzetre felkészülnek és így számomra feleslegesen sok dolgot tartalmaznak, a saját stíluslap viszont csak azt tartalmazza, amire az oldalaknak ténylegesen szükségük van.
+Kész, osztály nélküli stíluslap, például a Simple.css vagy a Pico.css helyett azért írtam sajátot, mert ezek sokféle elemre és helyzetre felkészülnek, a saját viszont csak azt tartalmazza, amire az oldalaknak ténylegesen szükségük van.
 
 == Üzemeltetés
 
 Az alkalmazás egyetlen futtatható állomány, amelyet négy parancssori kapcsoló állít be: a `--listen` a figyelt címet, a `--library` a könyvek mappáját, a `--database` az adatbázisfájlt, a `--log-file` pedig a naplófájlt adja meg.
 Mindegyiknek van alapértelmezése, a szerver például alapból csak a helyi gépről érhető el (`127.0.0.1:8080`).
-A naplózáshoz a `log` crate felületét egy saját naplózóval valósítom meg, amely minden sort időbélyeggel, a forráshellyel és a szinttel együtt a standard kimenetre és a naplófájl végére is kiír, így az előző futások naplója is megmarad.
-Ide kerül a sikertelen kérések oka is, amelyet a `Reply` trait naplóz, a kliens pedig csak az általános hibaoldalt kapja.
+A naplózáshoz a `log` könyvtár felületét egy saját naplózóval valósítom meg, amely minden sort időbélyeggel, a forráshellyel és a szinttel együtt a standard kimenetre és a naplófájl végére is kiír, így az előző futások naplója is megmarad.
 
-A `/health` állapotoldal a futó verziót és a könyvek számát mutatja, ez utóbbit a `count` a rekordok beolvasása nélkül kérdezi le.
-Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy külső felügyeleti eszköz az állapotkódból vagy a JSON-formából is észleli a hibát.
+A `/health` állapotoldal a futó verziót és a könyvek számát mutatja.
+Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy külső felügyeleti eszköz is észleli a hibát.
 
 #pagebreak()
 
@@ -1241,7 +1250,7 @@ Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy kü
 
 = Irodalomjegyzék
 
-#bibliography("refs.yml", title: none, full: true)
+#bibliography("refs.yml", title: none)
 
 #pagebreak()
 
@@ -1257,7 +1266,7 @@ Tudomásul veszem, hogy szakdolgozatomat a Szegedi Tudományegyetem a Diplomamun
 
 #v(1em)
 
-#par(first-line-indent: 0em)[Szeged, 2026. november 6.]
+#par(first-line-indent: 0em)[Szeged, 2026. november 26.]
 
 #v(1em)
 
