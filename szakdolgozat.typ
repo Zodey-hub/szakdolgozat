@@ -1085,7 +1085,35 @@ A nyelv indexébe csak a nyelvi címke elsődleges része kerül (például `en-
 
 == Keresés
 
-#todo[a keresett szöveg ugyanúgy normalizálódik (kisbetű, ékezetek elhagyása, szavakra bontás), mint indexeléskor -- a módját az indexelés már leírta, itt csak hivatkozni kell rá; szó eleji egyezés a `prefix_range`-dzsel; a jelöltek a legszelektívebb feltétel indexéből jönnek, a többi feltételt memóriában szűri]
+=== A keresési feltételek
+
+A kezdőlapon egy keresőűrlap található, amelynek nyolc mezője a cím, a szerző, a fordító, a témakör, a kiadó, a nyelv, valamint a kiadási év alsó és felső határa.
+Egyik mező kitöltése sem kötelező, egy könyv pedig akkor kerül a találatok közé, ha minden kitöltött feltételnek megfelel.
+Az űrlap egyszerű `GET` kérést küld, így a feltételek a `/search` útvonal lekérdezési paramétereibe kerülnek, és a találati listának is saját, megosztható URL-je van.
+Az üresen hagyott vagy csak írásjelekből álló mező, illetve a számként nem értelmezhető évszám nem számít feltételnek, és ha egyetlen feltétel sem marad, az oldal nem a teljes könyvtárat listázza, hanem üres marad.
+
+A keresett szöveget az alkalmazás ugyanazzal a `text` modullal normalizálja, amellyel indexeléskor a könyvek mezőit: kisbetűsíti, elhagyja belőle az ékezeteket, és szavakra bontja.
+Mivel a két oldal ugyanazokat a függvényeket hívja, a keresett szó és az indexkulcs formája nem térhet el egymástól, így a „Jókai” és a „jokai” keresés ugyanazt az eredményt adja.
+A szöveges feltételek szó eleji egyezést jelentenek: a feltétel minden szavának a mező valamelyik szavának elejére kell illeszkednie, a szavak sorrendjétől függetlenül.
+A „jok” és a „mór jók” keresés így egyaránt megtalálja Jókai Mór könyveit, az „okai” viszont nem, mert egy szó közepére már nem illeszkedik.
+A nyelvnél a teljes nyelvi címke mellett annak elsődleges része is elég (a „hu” a `hu-HU` címkéjű könyveket is megtalálja), az évek határai pedig magukat a megadott éveket is tartalmazzák.
+
+=== Jelöltek az indexből
+
+A keresés két lépésben történik: először egyetlen index adja a jelölteket, vagyis a könyveknek egy olyan halmazát, amely a találatokat biztosan tartalmazza, majd a többi feltételt az alkalmazás a memóriában ellenőrzi.
+Több index eredményének metszetére nincs szükség: ha a jelöltek száma kicsi, a további feltételek ellenőrzése a memóriában olcsó, egy második index lekérdezése viszont újabb rekordok betöltésével és deszerializálásával járna.
+
+Az indexet rögzített sorrendben, a várhatóan legszelektívebb feltétel szerint választom ki.
+Ha van szöveges feltétel, az első kitöltött szöveges mező (a cím, a szerző, a fordító, a témakör és a kiadó sorrendjében) első szava adja a jelölteket.
+Ebből a `prefix_range` készít kulcstartományt, a `range` pedig a mező indexéből minden olyan könyvet visszaad, amelynek valamelyik szava ezzel az előtaggal kezdődik.
+Egy könyv akkor is csak egyszer szerepel a jelöltek között, ha több szava is illeszkedik, mert a `range` az ismétlődéseket kiszűri.
+Egy szó eleje jellemzően kevés könyvre illeszkedik, egy nyelv viszont a könyvtár nagy részére is, ezért a nyelv indexét (`find` az elsődleges nyelvi címkére) csak akkor használom, ha nincs szöveges feltétel, az évekét pedig csak akkor, ha a felhasználó kizárólag évet adott meg.
+
+A `/search?author=jok&language=hu` kérésnél például a szerzők indexének „jok” kezdetű kulcsai adják a jelölteket, és ezek közül a memóriában a magyar nyelvűek maradnak meg.
+A jelölteken minden feltételt újra ellenőrzök, azt is, amelyik az indexet kiválasztotta, mert az index csak a feltétel első szavát vette figyelembe.
+Végül a találatok ékezet nélküli címük szerint rendezve kerülnek az oldalra, relevancia szerinti rangsorolás nincs.
+
+A találati oldal első sora azt is kiírja, hány jelöltet adott az index, ezek közül hány felelt meg a feltételeknek, és mennyi ideig tartott a keresés, így közvetlenül látszik, mennyire szűkítette a keresést a választott index.
 
 == Borítóképek és letöltés
 
