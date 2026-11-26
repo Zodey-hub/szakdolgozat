@@ -275,7 +275,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 == Hatókör és programozói felület
 
-=== Hatókör <sec:hatokor>
+=== Hatókör
 
 A HTTP-szervert önálló, alkalmazásfüggetlen könyvtárként írtam meg, és `tiny-http-server` néven a crates.io-n is közzétettem (@tiny-http-server).
 A könyvtár csak a protokollkezelésért felel: a TCP-kapcsolaton érkező bájtokból HTTP-kéréseket állít elő, átadja őket a kezelőnek, a kapott választ pedig visszaírja a hálózati kapcsolatra.
@@ -1083,10 +1083,10 @@ Ha két fájlnév mégis ugyanazt az azonosítót kapja, a második fájl kimara
 
 A beolvasás előtt az alkalmazás törli az előző futásból megmaradt adatbázisfájlt, így az adatbázis minden induláskor üresen kezd, és teljes egészében a könyvek mappájából épül fel.
 Ennek köszönhetően az adatok egyetlen hiteles forrása (single source of truth) maga a fájlrendszer, az adatbázis pedig csak gyorsítótárként szolgál.
-Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani (lásd az adatbázisréteg @sec:sema alfejezetét).
+Nem kell nyomon követni, hogy az előző futás óta mely fájlok kerültek be, változtak meg vagy törlődtek, és a `Book` típus szerkezetének változásakor sem kell migrációt végrehajtani.
 Egy sérült vagy olvashatatlan fájl sem akadályozza meg az indulást: az alkalmazás átugorja, és figyelmeztetést ír róla a naplóba.
 
-A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással (lásd az adatbázisréteg @sec:iras alfejezetét): egyszer a könyvek, egyszer a borítóképek.
+A rekordok csak a mappa bejárása után kerülnek az adatbázisba, két `insert_many` hívással: egyszer a könyvek, egyszer a borítóképek.
 Így a teljes indexelés két tranzakcióból és két fájlszinkronizálásból áll, és nem könyvenként kell egy-egy tranzakciót lezárni.
 
 Végül a `Book` típus kereshetőségét az indexbejegyzései biztosítják.
@@ -1145,10 +1145,10 @@ Mivel a könyv azonosítója újraindítás után is ugyanarra a könyvre mutat,
 
 === Letöltés
 
-A letöltéshez az adatbázisból csak a könyv fájlnevére van szükség, ezért ezt az adatbázisrétegnél bemutatott `view` metódussal olvasom ki (@tbl:view. táblázat): a closure csak a fájlnevet másolja ki az archivált sorból, a könyv többi mezőjét fel sem építi.
+A letöltéshez az adatbázisból csak a könyv fájlnevére van szükség, ezért ezt az adatbázisrétegnél bemutatott `view` metódussal olvasom ki: a closure csak a fájlnevet másolja ki az archivált sorból, a könyv többi mezőjét fel sem építi.
 A fájl elérési útja a könyvek mappájából és ebből a tárolt fájlnévből áll össze, a kérésből pedig csak az azonosító érkezik.
 Így a kliens nem adhat meg tetszőleges elérési utat, és a mappán kívüli fájlt sem tölthet le.
-A fájl egészben kerül a memóriába, onnan pedig a válasz törzsébe, mert a szerver nem támogatja a törzsek folyamatos továbbítását (lásd a HTTP-szerver @sec:hatokor. alfejezetét).
+A fájl egészben kerül a memóriába, onnan pedig a válasz törzsébe, mert a szerver nem támogatja a törzsek folyamatos továbbítását.
 
 A böngészőnek a `Content-Disposition` fejléc jelzi, hogy a fájlt mentse el, és milyen néven (@rfc6266).
 Mivel a könyvek fájlneve gyakran ékezetes, a pontos név UTF-8 és százalékos kódolással a `filename*` paraméterbe kerül (@rfc8187), a régebbi klienseknek szóló `filename` paraméterbe pedig egy ASCII-változat, amelyben minden más karaktert aláhúzás helyettesít.
