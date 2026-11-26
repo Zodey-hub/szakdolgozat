@@ -1003,7 +1003,48 @@ Minden más táblanyitási hiba, például ha a név alatt más típusú tábla 
 
 == Az alkalmazás célja és felépítése
 
-#todo[a repub: publikus EPUB-kereső és -letöltő oldal; az útvonalak (táblázat); ez az egyetlen rész, amely az EPUB formátumhoz kötődik; a modulok és a kérés útja: a `Router` maga a szerver `Handler`-e; a `Reply` trait: `None` -> 404, hiba -> naplózás és 500, így minden hiba egy helyen végződik]
+=== Cél és útvonalak
+
+A két könyvtár használhatóságát a `repub` nevű alkalmazással mutatom be (@repub).
+Ez egy publikus weboldal, amely egy könyvtár (mappa) EPUB-fájljait teszi kereshetővé és letölthetővé: a könyvek között metaadataik, például cím, szerző vagy kiadási év szerint lehet keresni, mindegyiknek saját oldala van a borítójával és a részleteivel, és innen maga a fájl is letölthető.
+Az oldal útvonalait a @tbl:utvonalak. táblázat foglalja össze.
+Minden oldal kétféle formában érhető el: a böngésző HTML-t kap, minden más kliens, például a curl vagy egy szkript, ugyanazon az útvonalon JSON-t.
+
+#figure(
+  table(
+    columns: (1fr, 1fr),
+    table.header[Útvonal][Válasz],
+    [`GET /`], [a keresőűrlap],
+    [`GET /search?title=…&author=…`], [a feltételeknek megfelelő könyvek listája],
+    [`GET /book?id=<id>`], [egy könyv oldala],
+    [`GET /cover?id=<id>`], [egy könyv borítóképe],
+    [`GET /download?id=<id>`], [egy könyv EPUB-fájlja],
+    [`GET /style.css`], [az oldalak közös stíluslapja],
+    [`GET /health`], [a szerver állapota],
+  ),
+  caption: [A bemutató alkalmazás útvonalai],
+) <tbl:utvonalak>
+
+Az alkalmazás az egyetlen rész, amely az EPUB formátumhoz kötődik: a HTTP-szerver és az adatbázisréteg semmit sem tud a könyvekről.
+Az alkalmazáson belül is csak egyetlen modul olvas EPUB-fájlt, a többi már az adatbázisban tárolt rekordokkal dolgozik.
+
+=== Modulok és a kérés útja
+
+#par(first-line-indent: 0em)[Az alkalmazást a következő modulokra bontottam:]
+
+- `app`: a parancssori kapcsolók, a naplózás és az indítás;
+- `library`: az EPUB-fájlok beolvasása és indexelése az adatbázisba;
+- `router`: az útvonalak, vagyis minden útvonal és a hozzá tartozó oldal egy helyen;
+- `pages`: az oldalak, amelyeknek HTML és JSON formájuk is van;
+- `files`: a borítókép, a letöltés és a stíluslap, amelyeknek csak egy formájuk van;
+- `reply`: a végpontok eredményének válasszá alakítása.
+
+#h(1.5em)
+
+Induláskor az `app` modul először a `library` segítségével felépíti az adatbázist, majd elindítja a szervert.
+A szerver kezelője maga a `Router` típus, amely a @lst:handler. kódrészletben bemutatott `Handler` traitet valósítja meg, és állapotként az adatbázist és a könyvek mappájának útvonalát tárolja.
+A `handle` metódus az `Accept` fejlécből meghatározza a válasz formáját, majd a metódus, az útvonal és az `id` paraméter hármasára illesztve kiválasztja a végpontot.
+Ha a metódus nem `GET`, az útvonal ismeretlen, vagy egy könyvhöz kötött útvonalon hiányzik az érvényes `id`, a kliens a „nem található” oldalt kapja.
 
 == Az EPUB formátum
 

@@ -101,3 +101,13 @@ tiny-database:
   url:
     value: https://crates.io/crates/tiny-database/2.0.0
     date: 2026-11-23
+
+repub:
+  type: Repository
+  title: "repub: Search and download EPUB books"
+  author:
+    name: "Bálint Máté"
+  version: 0.1.0
+  url:
+    value: https://github.com/Zodey-hub/repub
+    date: 2026-11-26
