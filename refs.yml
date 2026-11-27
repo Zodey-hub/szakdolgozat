@@ -275,3 +275,12 @@ tokio:
   url:
     value: https://github.com/tokio-rs/tokio
     date: 2026-11-26
+
+wrk:
+  type: Repository
+  title: "wrk: Modern HTTP benchmarking tool"
+  author: "Glozer, Will"
+  version: 4.2.0
+  url:
+    value: https://github.com/wg/wrk
+    date: 2026-11-27

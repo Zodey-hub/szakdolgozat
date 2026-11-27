@@ -1,3 +1,5 @@
+#import "@preview/lilaq:0.6.0" as lq
+
 #set document(
   title: "Teljesítmény- és méretoptimalizált webes keretrendszer tervezése és megvalósítása Rustban",
   author: "Bálint Máté",
@@ -133,7 +135,7 @@ A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-min
 
 == Elért eredmények
 
-#todo[a mérési eredmények rövid összefoglalása: a HTTP-szerver futtatható állományának mérete, áteresztőképessége, késleltetése és memóriahasználata, az adatbázisréteg írási és olvasási sebessége, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
+#todo[a mérési eredmények rövid összefoglalása: a HTTP-szerver futtatható állományának mérete, áteresztőképessége és memóriahasználata, az adatbázisréteg írási és olvasási sebessége, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
 
 == Kulcsszavak
 
@@ -192,7 +194,7 @@ A kitűzött célok teljesülését mérésekkel ellenőrzöm.
 Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a két elkészült könyvtárra irányulnak, és három kérdésre keresnek választ:
 
 - *Méret:* Mekkora a lefordított futtatható állomány, és az egyes tervezési és fordítási döntések mennyivel járulnak hozzá a méret csökkenéséhez.
-- *Teljesítmény:* Milyen áteresztőképességgel, késleltetéssel és memóriahasználattal szolgálja ki a kéréseket a HTTP-szerver, és milyen gyorsan ír és olvas az adatbázisréteg.
+- *Teljesítmény:* Milyen áteresztőképességgel és memóriahasználattal szolgálja ki a kéréseket a HTTP-szerver, és milyen gyorsan ír és olvas az adatbázisréteg.
 - *A tervezési döntések hatása:* Mennyit számítanak a gyakorlatban a keretrendszer kulcsfontosságú megoldásai, például a zero-copy olvasás a hagyományos deszerializáláshoz képest.
 
 == A dolgozat felépítése
@@ -1301,37 +1303,286 @@ Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy kü
 #pagebreak()
 
 // ---------- Mérések ----------
-// terjedelem: kb. 5,5 oldal
+// terjedelem: kb. 5 oldal
+// Az értékek a két mérőprojekt (tiny-http-server-bench, tiny-database-bench) results/*.tsv fájljaiból számolt mediánok.
+
+// a tengelyek osztásai a megadott értékeknél, magyarosan (0,5 és 10 000)
+#let osztasok(..values) = (
+  ticks: values.pos().map(value => (value, str(value).replace(".", ",").replace("10000", "10 000"))),
+  subticks: none,
+)
 
 = Mérések és kiértékelés
 
 == A mérések módja
 
-#todo[a két könyvtár saját, egyszerű mérőprogramja (egy minimális szerver és egy adatbázis-benchmark), a bemutató alkalmazást nem mérem külön; mérőkörnyezet (gép, OS, Rust verzió); eszközök (wrk, a memóriához RSS); ismétlések száma; a mérések korlátai (egy gép, loopback)]
+A Célkitűzésben feltett kérdésekre mérésekkel keresem a választ.
+Mivel nem célom más keretrendszerekkel versenyezni, mindkét könyvtárat önmagában mértem, egy-egy saját mérőprogrammal.
+Ezeket két külön projektben (`tiny-http-server-bench` és `tiny-database-bench`) készítettem el, és a crates.io-n közzétett 2.0.0-s verziót használják.
+A bemutató alkalmazást nem mértem külön, hiszen a teljesítményét ugyanez a két könyvtár határozza meg, egy keresés idejét pedig a találati oldal maga is kiírja.
 
-== A HTTP-szerver
+#par(first-line-indent: 0em)[A méréseket egy asztali számítógépen végeztem, a következő környezetben:]
+- *Processzor:* Intel Core i5-11400, hat mag, tizenkét szál, legfeljebb 4,4~GHz
+- *Memória:* 32~GB
+- *Háttértár:* NVMe SSD
+- *Operációs rendszer:* Debian 13 (Linux 6.12)
+- *Fordító:* Rust 1.100.0
 
-=== A futtatható állomány mérete
+#h(1.5em)
 
-#todo[a minimális szerver mérete a fordítási beállítások szerint, halmozva (alap release -> `opt-level` 3/s/z -> LTO -> `codegen-units=1` -> `panic=abort` -> `strip`), táblázat; mely crate-ek mennyit tesznek ki; a méretre optimalizált változat sebessége]
+A HTTP-szerver mérőprogramja egy minimális szerver, amely a `/` útvonalon egy 13~bájtos (`Hello, World!`), a `/large` útvonalon pedig egy 1~MiB-os törzsű választ ad.
+A terhelést a wrk (@wrk) állítja elő: megadott számú kapcsolatot nyit, mindegyiken folyamatosan küldi a kéréseket, mindig megvárva az előző választ, közben pedig méri az áteresztőképességet.
+Mivel a wrk és a szerver ugyanazon a gépen fut, a forgalmuk a helyi loopback-en zajlik, és a processzoron is osztoznak.
+Hogy ne zavarják egymást, a `taskset` paranccsal külön magokra kötöttem őket: a szerver munkaszálai legfeljebb három mag egy-egy hardveres szálán futnak, a wrk pedig a másik három mag mind a hat szálát megkapja.
+Így három munkaszálnál is a szerver a szűk keresztmetszet: 280% körüli processzorhasználattal szinte teljesen kihasználja a három magot, a wrk viszont egy próbamérés szerint a hat szálának csak kb. 60%-át.
+Minden beállításhoz új szerverfolyamatot indítottam, amelyet 1~másodpercig bemelegítettem, majd 5~másodpercig mértem, és a teljes sorozatot háromszor futtattam le egymás után.
+A memóriát a szerverfolyamat rezidens memóriájával (RSS) mértem, amelyet a Linux a `/proc` fájlrendszerben tesz közzé: terhelés alatt a futás közbeni csúcsértéket, tétlen kapcsolatoknál pedig az aktuális értéket olvastam ki, miután egy külön kliensprogram megnyitotta a kapcsolatokat.
 
-=== Áteresztőképesség és késleltetés
+Az adatbázisréteg mérőprogramja egyetlen processzormagon fut, és az időt a szabványos könyvtár `Instant` típusával méri.
+Két rekordtípust használ: egy kis `User` rekordot, amely a @lst:user. kódrészletéhez hasonló, és egy nagy `Book` rekordot, amely a bemutató alkalmazás könyveit utánozza.
+Az előbbi átlagosan 45~bájtos, és 3 indexbejegyzése van, az utóbbi 1,6~kB-os, és 15 indexbejegyzése van, mert a szöveges mezőinek minden szava külön kulcs.
+A rekordok tartalmát egy rögzített kezdőértékű álvéletlenszám-generátor állítja elő, és egy tábla 10~000 rekordot tartalmaz, ami egy kis alkalmazás nagyságrendje.
+Az adatbázisfájlok az SSD-n jönnek létre, mert egy memóriában tárolt fájlrendszeren (tmpfs) a véglegesítéskor nem kellene semmit a lemezre szinkronizálni, így az írás a valósnál jóval gyorsabbnak tűnne.
+Egy körben a mérőprogram sok azonos műveletet hajt végre -- például 100~000 olvasást véletlenszerű azonosítókkal --, és ezek átlagos idejét jegyzi fel; az olvasásokat öt, az írásokat három körben mértem.
+Az ábrákon és a táblázatokban mindkét könyvtárnál az ismétlések mediánja szerepel, így egy-egy kiugró futás nem torzítja az eredményt.
 
-#todo[wrk a kapcsolatok és a szálak számának függvényében; kis és nagy (pl. 1 MiB) válasz]
+== A futtatható állomány mérete <sec:meret>
+
+A futtatható állomány méretét a `release` profil öt beállítása befolyásolja leginkább (@cargo-book):
+
+- `opt-level`: az optimalizálás szintje; a 3 a sebességre, az `"s"` és a `"z"` a méretre optimalizál.
+- `lto`: a szerkesztés közbeni optimalizálás (link-time optimization), amely `true` értékkel az összes crate kódját együtt optimalizálja, így a fordító a crate-határokon át is beemelheti a függvényeket (inlining), és elhagyhatja a fel nem használt kódot.
+- `codegen-units`: hány részre bontja a fordító a crate-et a párhuzamos kódgeneráláshoz; az alapértelmezett 16 rész gyorsabb fordítást, az 1 több optimalizálási lehetőséget ad.
+- `panic`: `"abort"` értéknél a pánik nem bontja vissza a vermet, hanem azonnal leállítja a folyamatot, így a visszabontáshoz szükséges kód elmarad.
+- `strip`: `true` értékkel a hibakeresési információ mellett a szimbólumtáblát is eltávolítja.
+
+#h(1.5em)
+
+A méretet a minimális szerveren és egy hasonlóan minimális adatbázis-programon mértem, amely egy kétindexes rekordtípust ír ki és olvas vissza a fő műveletekkel.
+A többi négy beállítást egymás után, halmozva kapcsoltam be (@tbl:meret. táblázat), az optimalizálás szintjét viszont végig 3-on hagytam, mert a lehető leggyorsabb binárissal szerettem volna elérni a legkisebb fájlméretet.
+Viszonyítási alapként egy üres `main` függvényből álló programot is lefordítottam, amely azt mutatja, mennyit tesz ki önmagában a Rust szabványos könyvtára.
+
+#figure(
+  table(
+    columns: 4,
+    align: (left, right, right, right),
+    table.header[Beállítás][Üres program][HTTP-szerver][Adatbázisréteg],
+    [alapértelmezett `release` profil], [428], [909], [2018],
+    [\+ `lto = true`], [349], [712], [1646],
+    [\+ `codegen-units = 1`], [349], [701], [1595],
+    [\+ `panic = "abort"`], [346], [630], [1451],
+    [\+ `strip = true`], [279], [512], [1270],
+  ),
+  caption: [A futtatható állományok mérete (KiB) a `release` profil beállításait egymás után bekapcsolva; az utolsó sor a bemutató alkalmazás profilja],
+) <tbl:meret>
+
+A négy beállítás a szerver méretét 909~KiB-ról 512~KiB-ra, vagyis 44%-kal csökkenti, ebből a legtöbbet az LTO (198~KiB) és a szimbólumtábla eltávolítása (118~KiB) hozza.
+A `panic = "abort"` a szervernél 71~KiB-ot takarít meg, az üres programnál szinte semmit, mert a szabványos könyvtár előre lefordított, visszabontást támogató változata így is a programba kerül.
+Ennek a megtakarításnak ára is van: visszabontás mellett az `async-executor` elkapja egy task pánikját, így egy hibás kezelő csak a saját kapcsolatát szakítaná meg, `abort` mellett viszont az egész szerver leáll.
+Az üres programhoz képest a szerver saját része -- a könyvtár a függőségeivel együtt -- 482~KiB-ról 232~KiB-ra zsugorodik.
+
+Az adatbázis-program ennél jóval nagyobb, a négy beállítás után is 1270~KiB, amelyből 991~KiB a saját rész.
+A szimbólumtábla alapján a program kódjának nagyjából 70%-a a `redb` kódja, ami nem meglepő, hiszen egy teljes tárolómotorról van szó B+-fákkal, copy-on-write lapkezeléssel és tranzakciókkal.
+
+A négy beállítás a sebességet sem rontja, sőt: az alapértelmezett profilhoz képest a szerver 64 kapcsolaton kb. 7%-kal több kis kérést szolgál ki, az adatbázisréteg műveletei pedig kb. 2--20%-kal gyorsabbak.
+Az 1~MiB-os válasznál a különbség a mérés szórásán belül van, mert ott a memória másolása a meghatározó.
+
+== A HTTP-szerver teljesítménye
+
+=== Áteresztőképesség
+
+Az @fig:atereszto. ábra a szerver áteresztőképességét mutatja a kapcsolatok és a munkaszálak számának függvényében.
+A kis válasznál egy munkaszál legfeljebb kb. 223~ezer kérést szolgál ki másodpercenként, három munkaszál pedig 552 ezret, vagyis 2,5-szer annyit.
+Egy kérés kiszolgálása egy szálon kb. 4,5~µs processzoridőbe kerül, három szálon 5,1~µs-ba, így a szálak a közös executor ellenére is csak kevéssé lassítják egymást, hiszen a kapcsolatok között nincs megosztott, zárolást igénylő állapot.
+A csúcsot 64--256 kapcsolatnál éri el a szerver: kevesebb kapcsolatnál a kérések oda-vissza útja korlátoz, hiszen egy kapcsolaton egyszerre csak egy kérés lehet úton, több kapcsolatnál pedig a kérésenkénti processzoridő nő.
+
+#figure(
+  {
+    let kapcsolatok = (1, 4, 16, 64, 256, 1024)
+    set text(size: 9pt)
+    grid(
+      columns: 2,
+      column-gutter: 2em,
+      lq.diagram(
+        width: 6cm,
+        height: 3.5cm,
+        title: [kis válasz (13 bájt)],
+        xlabel: [kapcsolatok],
+        ylabel: [ezer kérés/s],
+        xscale: "log",
+        xaxis: osztasok(..kapcsolatok),
+        yaxis: (exponent: 0),
+        ylim: (0, auto),
+        legend: (position: top + left),
+        lq.plot(kapcsolatok, (94.8, 198.6, 217.4, 222.5, 185.9, 152.2), label: [1 szál], mark: "o"),
+        lq.plot(kapcsolatok, (71.1, 241.7, 320.4, 378.0, 385.3, 291.5), label: [2 szál], mark: "s"),
+        lq.plot(kapcsolatok, (71.2, 269.5, 425.5, 512.9, 552.2, 448.1), label: [3 szál], mark: "^"),
+      ),
+      lq.diagram(
+        width: 6cm,
+        height: 3.5cm,
+        title: [nagy válasz (1 MiB)],
+        xlabel: [kapcsolatok],
+        ylabel: [GiB/s],
+        xscale: "log",
+        xaxis: osztasok(..kapcsolatok),
+        ylim: (0, auto),
+        lq.plot(kapcsolatok, (5.92, 6.27, 5.42, 5.34, 5.20, 4.94), mark: "o"),
+        lq.plot(kapcsolatok, (5.79, 11.47, 10.00, 9.14, 9.13, 8.80), mark: "s"),
+        lq.plot(kapcsolatok, (5.79, 15.76, 13.29, 11.29, 10.72, 10.76), mark: "^"),
+      ),
+    )
+  },
+  kind: image,
+  caption: [A szerver áteresztőképessége a kapcsolatok és a munkaszálak számának függvényében],
+) <fig:atereszto>
+
+A nagy válasznál egy szál másodpercenként 5--6~GiB-ot küld ki, három szál legfeljebb 15,8~GiB-ot.
+Itt a válasz másolása a szűk keresztmetszet: a szerver a törzset a kimeneti pufferébe, a rendszerhívás onnan a kernel pufferébe, a wrk pedig a saját memóriájába másolja.
 
 === Memóriahasználat
 
-#todo[indításkor, terhelés alatt és tétlen kapcsolatonként]
+Induláskor a szerver rezidens memóriája (RSS) 2,4~MiB.
+Az @fig:memoria. ábra bal oldala azt mutatja, hogyan nő ez a nyitott, tétlen keep-alive kapcsolatok számával: minden kapcsolaton egy kérés ment át, és utána a kapcsolat nyitva maradt.
+A növekedés egyenletes, kapcsolatonként 11,2~KiB, így 10~000 tétlen kapcsolat 111~MiB-ot foglal.
+Ennek nagyobbik része a bemeneti puffer, amelyet a szerver minden olvasás előtt 8~KiB-tal megnövel és kinulláz, így a következő kérésre váró kapcsolat már ezt a 8~KiB-ot tartja lefoglalva; a maradék kb. 3~KiB-on a kapcsolat taskja és a többi adata osztozik.
 
-== Az adatbázisréteg
+#figure(
+  {
+    let kapcsolatok = (1, 4, 16, 64, 256, 1024)
+    set text(size: 9pt)
+    grid(
+      columns: 2,
+      column-gutter: 1.5em,
+      lq.diagram(
+        width: 6cm,
+        height: 3.5cm,
+        title: [tétlen kapcsolatok],
+        xlabel: [kapcsolatok],
+        ylabel: [RSS (MiB)],
+        xaxis: osztasok(0, 2000, 4000, 6000, 8000, 10000),
+        ylim: (0, auto),
+        lq.plot((0, 1000, 2000, 4000, 6000, 8000, 10000), (2.4, 13.3, 24.2, 45.9, 67.8, 89.6, 111.4), mark: "o"),
+      ),
+      lq.diagram(
+        width: 6cm,
+        height: 3.5cm,
+        title: [csúcs terhelés alatt (3 szál)],
+        xlabel: [kapcsolatok],
+        ylabel: [RSS (MiB)],
+        xscale: "log",
+        yscale: "log",
+        xaxis: osztasok(..kapcsolatok),
+        yaxis: osztasok(1, 10, 100, 1000),
+        legend: (position: top + left),
+        lq.plot(kapcsolatok, (2.4, 2.4, 2.6, 3.2, 5.4, 14.3), label: [kis válasz], mark: "o"),
+        lq.plot(kapcsolatok, (4.4, 7.4, 15.3, 64.0, 258.3, 1035.6), label: [nagy válasz], mark: "s"),
+      ),
+    )
+  },
+  kind: image,
+  caption: [A szerver rezidens memóriája tétlen kapcsolatokkal és terhelés alatt],
+) <fig:memoria>
+
+Terhelés alatt a kis válasznál a csúcsmemória 1024 kapcsolatnál is csak 14,3~MiB, a nagy válasznál viszont a kapcsolatok számával arányosan nő, 1024 kapcsolatnál 1036~MiB-ig (az ábra jobb oldala).
+Ennek oka a kimeneti puffer: a szerver a teljes választ egy pufferbe másolja, amelynek a kapacitása a kapcsolat végéig megmarad, így minden kapcsolat a legnagyobb addigi válaszának megfelelő memóriát tartja lefoglalva.
+Nagy fájlok kiszolgálásánál -- mint a bemutató alkalmazás letöltései -- a memóriaigényt ezért a párhuzamos letöltések száma és a fájlok mérete szabja meg, amin csak a válasz folyamatos továbbítása (streaming) segítene.
+
+== Az adatbázisréteg teljesítménye
 
 === Írás
 
-#todo[`insert` rekordonként és `insert_many` egy tranzakcióban (a commit, vagyis a fájlszinkronizálás költsége)]
+Az @fig:iras. ábra egy rekord írásának idejét mutatja aszerint, hogy egy tranzakcióban hány rekord kerül az adatbázisba.
+Egyenként, `insert`-tel írva egy `User` rekord 276~µs-ig tart, vagyis másodpercenként kb. 3600 rekord írható, és ennek szinte teljes egészét a tranzakció véglegesítése és az azzal járó fájlszinkronizálás teszi ki.
+Egy `insert_many` hívással 10~000 rekordot írva viszont csak 6,3~µs jut egy rekordra, ami 44-szeres gyorsulás.
+A `Book` rekordnál a különbség kisebb, 17-szeres (537~µs-ról 32~µs-ra), mert ott egy rekord kiírása már önmagában is drágább: a 15 indexbejegyzés mindegyike egy-egy beszúrás egy multimap táblába.
+Ez a mérés igazolja a bemutató alkalmazás döntését is, hogy a könyveket és a borítóképeket egy-egy `insert_many` hívással írja ki.
+
+#figure(
+  {
+    let kotegek = (1, 10, 100, 1000, 10000)
+    set text(size: 9pt)
+    lq.diagram(
+      width: 10cm,
+      height: 3cm,
+      xlabel: [rekordok tranzakciónként],
+      ylabel: [µs/rekord],
+      xscale: "log",
+      yscale: "log",
+      xaxis: osztasok(..kotegek),
+      yaxis: osztasok(5, 10, 20, 50, 100, 200, 500),
+      lq.plot(kotegek, (276.4, 54.2, 15.5, 7.3, 6.3), label: [`User`], mark: "o"),
+      lq.plot(kotegek, (537.2, 184.4, 77.6, 37.2, 32.0), label: [`Book`], mark: "s"),
+    )
+  },
+  kind: image,
+  caption: [Egy rekord írásának ideje a tranzakciónként írt rekordok számának függvényében],
+) <fig:iras>
 
 === Olvasás
 
-#todo[a zero-copy `view` és a teljes deszerializálás (`get`) összevetése kis és nagy rekordon; keresés indexszel (`find`, `range`) és a teljes tábla szűrésével (`all` + `filter`)]
+A zero-copy olvasás hasznát a `get` és a `view`, illetve az `all` és a `view_all` összevetése mutatja meg (@tbl:olvasas. táblázat).
+A `view` closure-je mindkét rekordtípusnál egyetlen sztringmezőt másol ki (a nevet, illetve a címet), ahogy a bemutató alkalmazás letöltése is csak a fájlnevet.
+A táblázat egyetlen rekord olvasásánál egy hívás átlagos idejét mutatja, a teljes tábla bejárásánál pedig -- amelyet a mérőprogram körönként 20-szor ismétel -- a bejárás idejét egy rekordra vetítve; a gyorsulás a két idő hányadosa.
+Egy rekord azonosító szerinti olvasásánál a `User` esetében alig van különbség (631 és 616~ns), mert az idő nagyobbik részét az olvasó tranzakció megnyitása és a B+-fában való keresés viszi el.
+A `Book` rekordnál viszont a `view` már 25%-kal rövidebb idő alatt végez (1346 helyett 1004~ns).
+A teljes tábla bejárásakor a tranzakció költsége sok rekord között oszlik meg, így itt jobban látszik a deszerializálás ára: a `view_all` a `User` táblán 1,5-szer, a `Book` táblán 2,7-szer gyorsabb, mint az `all`.
+
+#figure(
+  table(
+    columns: 5,
+    align: (x, _) => (if x < 2 { left } else { right }) + horizon,
+    table.header[Olvasás][Rekord][Hagyományos (ns)][Zero-copy (ns)][Gyorsulás],
+    table.cell(rowspan: 2)[egy rekord], [`User`], [631], [616], [1,0×],
+    [`Book`], [1346], [1004], [1,3×],
+    table.cell(rowspan: 2)[teljes tábla], [`User`], [160], [106], [1,5×],
+    [`Book`], [1174], [429], [2,7×],
+  ),
+  caption: [A hagyományos (`get`, `all`) és a zero-copy (`view`, `view_all`) olvasás ideje, a teljes táblánál egy rekordra vetítve],
+) <tbl:olvasas>
+
+=== Keresés
+
+Az @fig:kereses. ábra azt mutatja, mikor éri meg indexszel keresni, és mikor elég a teljes táblát végignézni.
+A `User` táblából azokat a rekordokat kértem le, amelyekben az életkor egy határ alatt van.
+Mivel az életkor 0 és 99 között egyenletes eloszlású, a határ egyben a találatok arányát is megadja: a 10 alatti életkorú rekordok például a tábla 10%-át teszik ki.
+Ugyanezt a lekérdezést háromféleképpen futtattam le.
+A `range` az életkor indexéből gyűjti ki a feltételnek megfelelő azonosítókat, majd ezek alapján egyenként betölti a rekordokat a sortáblából.
+A másik kettő a teljes táblát bejárja: az `all` minden rekordot deszerializál, és csak utána szűr, a `view_all` closure-je viszont még az archivált rekordon ellenőrzi az életkort, és csak a feltételnek megfelelő rekordokat deszerializálja.
+
+#figure(
+  {
+    let aranyok = (1, 2, 5, 10, 20, 50, 100)
+    set text(size: 9pt)
+    lq.diagram(
+      width: 10cm,
+      height: 3cm,
+      xlabel: [a találatok aránya (%)],
+      ylabel: [ms/lekérdezés],
+      xscale: "log",
+      yscale: "log",
+      xaxis: osztasok(..aranyok),
+      yaxis: osztasok(0.02, 0.05, 0.1, 0.2, 0.5, 1, 2),
+      legend: (position: bottom + right),
+      lq.plot(aranyok, (0.026, 0.061, 0.148, 0.327, 0.642, 1.600, 3.192), label: [`range` az indexen], mark: "o"),
+      lq.plot(aranyok, (1.554, 1.569, 1.566, 1.582, 1.602, 1.656, 1.558), label: [`all` és szűrés], mark: "s"),
+      lq.plot(aranyok, (0.682, 0.697, 0.725, 0.777, 0.872, 1.163, 1.578), label: [`view_all` és szűrés], mark: "^"),
+    )
+  },
+  kind: image,
+  caption: [Egy lekérdezés ideje 10~000 `User` rekordon a találatok arányának függvényében],
+) <fig:kereses>
+
+Az `all` ideje a találatok arányától függetlenül kb. 1,6~ms, hiszen mindig mind a 10~000 rekordot deszerializálja.
+A `view_all` kevés találatnál ennek kevesebb mint a felével beéri (1%-nál 0,68~ms), mert minden rekordra csak a validálás jut, a deszerializálás pedig csak a találatokra.
+A találatok számával együtt viszont az ideje is nő, és 100%-nál már utoléri az `all`-t.
+
+Az index ott a leggyorsabb, ahol kevés rekord felel meg: 1%-nál 0,026~ms alatt válaszol, 60-szor gyorsabban, mint az `all`, és 26-szor gyorsabban, mint a `view_all`.
+Az ideje viszont nagyjából egyenes arányban nő a találatok számával, mert minden találathoz külön keresés kell a sortábla B+-fájában.
+Egy így betöltött rekord kb. kétszer annyiba kerül, mint a teljes bejárásban, amely a sortáblát sorban olvassa: 100%-nál az index 3,2~ms, az `all` 1,6~ms alatt adja vissza ugyanazt a 10~000 rekordot.
+Ezért az index kb. 50%-os találati aránynál veszíti el az előnyét az `all`-lal szemben, a `view_all`-lal szemben pedig már 20 és 50% között.
+
+Ez a bemutató alkalmazás keresésének tervezését is alátámasztja: egy szó eleje jellemzően kevés könyvre illeszkedik, így ott az index sokszorosan megtérül, a nyelv indexe viszont a könyvek nagy részére is illeszkedhet, és ilyenkor a teljes bejárásnál sem gyorsabb.
 
 #pagebreak()
 
