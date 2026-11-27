@@ -53,8 +53,6 @@
 #show table.cell.where(y: 0): set text(weight: "bold")
 #show table.cell: set par(justify: false)
 
-#let todo(body) = text(fill: red)[\[TODO: #body\]]
-
 // ---------- Címlap ----------
 
 #[
@@ -135,7 +133,11 @@ A felhasználói felület szerveroldalon renderelődik: az oldalakat builder-min
 
 == Elért eredmények
 
-#todo[a mérési eredmények rövid összefoglalása: a HTTP-szerver futtatható állományának mérete, áteresztőképessége és memóriahasználata, az adatbázisréteg írási és olvasási sebessége, valamint a főbb tervezési döntések (pl. zero-copy olvasás) mért hatása]
+Mindkét könyvtár elkészült, és tiny-http-server, illetve tiny-database néven a crates.io-n is elérhető, a bemutató alkalmazás pedig mindkettőre épül.
+A mérések szerint a fordítási profil beállításai a minimális szerver futtatható állományát 909~KiB-ról 512~KiB-ra csökkentették úgy, hogy közben a program gyorsabb is lett.
+A szerver egy munkaszálon másodpercenként kb. 223~ezer, három munkaszálon 552~ezer kis kérést szolgál ki, induláskor 2,4~MiB memóriát használ, és ehhez egy tétlen kapcsolat csak 11,2~KiB-ot ad hozzá.
+Az adatbázisrétegben a kötegelt írás egy kis rekordot 44-szer gyorsabban ír ki, mint az egyenkénti, a zero-copy olvasás pedig a nagy rekordokból álló tábla bejárását 2,7-szer gyorsítja.
+Kevés találatnál az indexes keresés akár 60-szor gyorsabb a teljes tábla bejárásánál.
 
 == Kulcsszavak
 
@@ -1587,21 +1589,41 @@ Ez a bemutató alkalmazás keresésének tervezését is alátámasztja: egy sz�
 #pagebreak()
 
 // ---------- Összefoglalás ----------
-// terjedelem: kb. 1,5 oldal
+// terjedelem: 1 oldal
 
 = Összefoglalás
 
 == Elért eredmények
 
-#todo[a kitűzött célok teljesülése a mérések alapján]
+Dolgozatomban egy Rust nyelvű webes keretrendszert terveztem és valósítottam meg, amely két önálló, a crates.io-n is közzétett könyvtárból áll: a `tiny-http-server` HTTP-szerverből és a `tiny-database` adatbázisrétegből.
+Gyakorlati használhatóságukat a `repub` bemutató alkalmazás igazolja, amely egy EPUB-gyűjteményt tesz kereshetővé és letölthetővé.
+
+A Célkitűzésben feltett három kérdésre a mérések a következő válaszokat adták.
+A `release` profil négy beállítása úgy csökkentette a futtatható állomány méretét, hogy közben a program még gyorsabb is lett: a minimális szerver 909~KiB helyett 512~KiB, amelyből a szerver saját része -- a könyvtár a függőségeivel együtt -- csak 232~KiB.
+Az adatbázis-program ennél nagyobb, 1270~KiB, de ennek nagyobbik részét a `redb` tárolómotorja teszi ki.
+A szerver egy munkaszálon másodpercenként kb. 223~ezer, három munkaszálon 552~ezer kis kérést szolgál ki, induláskor 2,4~MiB memóriát használ, és ehhez egy tétlen kapcsolat csak 11,2~KiB-ot ad hozzá.
+Az adatbázisréteg tervezési döntései közül a kötegelt írás hatása a legnagyobb: az `insert_many` egy kis rekordot 44-szer gyorsabban ír ki, mint az egyenkénti `insert`.
+A zero-copy olvasás haszna a rekord méretétől függ: egyetlen kis rekordnál alig mérhető, a nagy rekordokból álló tábla bejárását viszont 2,7-szer gyorsítja.
+Az index kevés találatnál akár 60-szor gyorsabban válaszol, mint a teljes tábla bejárása, a találatok arányának növekedésével azonban elveszíti az előnyét.
+Mindez a bemutató alkalmazás kötegelt indexelését és a keresés indexválasztását is igazolja.
 
 == Korlátok
 
-#todo[nincs TLS (reverse proxy mögé való), nincs streamelés (a letöltött fájl is egészben a memóriában), nincs chunked törzs, nincs kapcsolatszám-korlát; az adatbázis lekérdezései teljes listát adnak, lapozás nélkül; a keresés nem rangsorol]
+A keretrendszer egyszerűségének ára is van, hiszen több, a nagy keretrendszerektől megszokott képesség szándékosan kimaradt belőle.
+A szerver nem kezeli a titkosítást (TLS), ezért nyilvános használatra egy fordított proxy mögé kell helyezni.
+A darabolt átvitelt és a törzsek folyamatos továbbítását (streaming) sem támogatja, így a kérések és a válaszok törzsét egészben a memóriában tartja.
+A mérések szerint emiatt a nagy válaszok memóriaigénye a párhuzamos kapcsolatok számával arányosan nő, ami a bemutató alkalmazás letöltéseit is érinti.
+Az egyidejűleg nyitott kapcsolatok számát sem korlátozza a szerver, így közvetlenül a nyilvános internetre kitéve sok kapcsolattal kimeríthető a memóriája.
+Az adatbázisréteg lekérdezései a teljes találati listát egyszerre, lapozás nélkül adják vissza, és a `view*` metódusok bejárása sem állítható le idő előtt.
+A bemutató alkalmazás keresése végül csak szó eleji egyezést vizsgál, a találatokat pedig cím szerint rendezi, relevancia szerint nem rangsorolja.
 
 == Továbbfejlesztési lehetőségek
 
-#todo[streamelt válasz nagy fájlokhoz, kapcsolatszám-korlát, HTTP/2, a `view` bejárás idő előtti megállítása, rangsoroló teljes szöveges keresés, ...]
+A korlátok egyben a továbbfejlesztés irányait is kijelölik.
+A legfontosabb lépés a válaszok folyamatos továbbítása volna: ha a törzs nemcsak kész bájtsorozat, hanem darabonként előállított adatfolyam is lehetne, egy nagy fájl letöltése a méretétől függetlenül csak egy kis puffernyi memóriát foglalna.
+Ehhez kapcsolódik a darabolt átvitel támogatása, valamint egy, a `ServerBuilder`-en beállítható globális kapcsolatszám-korlát, amely a szerver memóriaigényének is felső határt szabna.
+Az adatbázisrétegben a `view*` metódusok closure-je a visszatérési értékével jelezhetné, hogy a bejárás véget érhet, így egy lapozó lekérdezésnek nem kellene a kért oldal utáni rekordokat is betöltenie.
+A bemutató alkalmazás keresése pedig rangsoroló teljes szöveges kereséssel bővülhetne, amely a találatokat aszerint rendezné, mennyire illeszkednek a feltételekhez.
 
 #pagebreak()
 
