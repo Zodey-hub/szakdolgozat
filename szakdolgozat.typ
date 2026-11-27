@@ -209,7 +209,7 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 #pagebreak()
 
 // ---------- Felhasznált technológiák ----------
-// terjedelem: kb. 7 oldal
+// terjedelem: kb. 4 oldal
 // itt az általános fogalom szerepeljen, a tervezési döntés a későbbi fejezetekben, előrehivatkozással
 
 = Felhasznált technológiák
@@ -218,53 +218,161 @@ Nem célom más keretrendszerekkel versenyezni, ezért a mérések magára a ké
 
 === Memóriakezelés és biztonság
 
-#todo[tulajdonjog és kölcsönzés (borrow checker), élettartamok, memóriabiztonság fordítási időben, nincs szemétgyűjtő és futásidejű környezet; a szálak közötti megosztás: `Send`, `Sync`, `'static` és `Arc`]
+A Bevezetésben már említettem, hogy a Rust szemétgyűjtő nélkül, mégis fordítási időben garantálja a memóriabiztonságot.
+Ezt a tulajdonjog (ownership) szabályai teszik lehetővé (@rust-book): minden értéknek pontosan egy tulajdonosa van, és amikor a tulajdonos kikerül a hatóköréből, az érték memóriája azonnal felszabadul.
+Ha egy függvénynek csak használnia kell egy értéket, elég kölcsönkérnie egy referencián keresztül.
+Ilyenkor egy értékre egyszerre vagy tetszőleges számú megosztott (`&T`), vagy pontosan egy módosítható (`&mut T`) referencia mutathat.
+Ennek betartását a fordító egy része, a borrow checker ellenőrzi, az élettartamok (lifetimes) segítségével pedig azt is, hogy egy referencia ne élje túl azt az értéket, amelyre mutat.
+Az élettartam egy függvény vagy típus aláírásában is megjelenhet, ha a visszaadott érték egy másik értéket kölcsönöz.
+Ahol a fordító nem tudja igazolni egy művelet biztonságát, ott a programozó egy `unsafe` blokkban maga vállalja érte a felelősséget; a két könyvtár és a bemutató alkalmazás saját kódjában ilyen blokk nincs.
+
+Ugyanezek a szabályok a szálak közötti adatmegosztást is biztonságossá teszik.
+A `Send` trait azt jelzi, hogy egy típus értéke átadható egy másik szálnak, a `Sync` pedig azt, hogy több szál egyszerre is használhatja megosztott referencián keresztül.
+Ezeket a fordító a típus mezőiből vezeti le, és mindenhol ellenőrzi, ahol egy érték szálak között kerülhet át, így az adatverseny (data race) fordítási hibát okoz.
+Mivel egy új szál tovább futhat, mint az őt indító függvény, a szabványos `thread::spawn` csak olyan adatot fogad el, amely nem kölcsönöz rövidebb ideig élő értéket, vagyis teljesíti a `'static` megkötést.
+A több szál által használt értéket ezért általában egy `Arc` (atomic reference counted) mutatóba csomagolják, amelynek klónozása csak egy atomikus számlálót növel, az érték módosításához pedig egy zár, például `Mutex` is kell.
 
 === Absztrakciók és hibakezelés
 
-#todo[traitek és generikus API-k, amelyekre a könyvtárak épülnek (`Handler`, `Record`), closure-ök; a monomorfizáció és ára (a kódméret), ha a méretmérés épít rá; a `Result`, a `?` operátor és a `panic`; könyvtárban saját hibatípus (thiserror), alkalmazásban anyhow]
+Mindkét könyvtár programozói felülete traitekre épül.
+Egy trait a más nyelvek interfészeihez hasonlóan metódusokat, asszociált konstansokat és típusokat ír elő, a generikus függvények pedig a típusparamétereikre traitmegkötést tehetnek, így például az adatbázisréteg `get` metódusa bármilyen, a `Record` traitet megvalósító típussal hívható.
+A trait megvalósítását a `derive` attribútum a típus definíciójából is előállíthatja, így készül az `rkyv` és a `serde` szerializáló kódja is.
+Az enumok változatai saját adatokat is tartalmazhatnak, a `match` kifejezés pedig kimerítő: a fordító hibát jelez, ha egy változat kezelése kimarad.
+
+A Rustban nincsenek kivételek.
+A hiányozható értéket az `Option<T>` (`Some` vagy `None`), a meghiúsulható művelet eredményét a `Result<T, E>` (`Ok` vagy `Err`) enum írja le, és a bennük lévő értékhez csak a változat vizsgálatával lehet hozzájutni.
+A `?` operátor ezt a vizsgálatot rövidíti le: `Ok` esetén kicsomagolja az értéket, `Err` esetén pedig azonnal visszatér a függvényből, és a hibát a hívónak adja tovább.
+A programhibát a pánik (panic) jelzi, amely alapértelmezés szerint visszabontja a szál vermét, majd leállítja a szálat; pánikot okoz az `unwrap` is, ha `None`-t vagy `Err`-t kellene kicsomagolnia.
+A hibatípusok megírását két külső könyvtár könnyíti meg.
+A HTTP-szerver és az adatbázisréteg a `thiserror` (@thiserror) `derive` makrójával definiálja a saját hibatípusát, a bemutató alkalmazás viszont a hibákat csak naplózza, ezért ott az `anyhow` (@anyhow) általános hibatípusa a kényelmesebb, amely bármilyen hibát befogad.
 
 === Cargo és a fordítási profilok
 
-#todo[a Cargo, a crate-ek és a crates.io (mindkét könyvtár ott publikált); a feature-ök egyesítése (később: az rkyv `unaligned`); a release profil lehetőségei (`opt-level`, LTO, `codegen-units`, `panic=abort`, `strip`)]
+A Rust-programok fordítását és függőségeik kezelését a Cargo végzi (@cargo-book).
+A fordítás egysége a crate (könyvtár vagy futtatható program), amelynek függőségeit a `Cargo.toml` fájl sorolja fel, a Cargo pedig a crates.io központi tárolójából tölti le őket; a dolgozat két könyvtárát is itt tettem közzé.
+Egy crate a képességei egy részét feature-ök mögé rejtheti, amelyeket a felhasználója fordításkor kapcsolhat be.
+Ha ugyanazt a crate-et több függőség is használja, a Cargo csak egyszer fordítja le, az összes igényelt feature egyesítésével, így egy feature bekapcsolása a crate minden felhasználójára hat.
+
+A fordítás módját a profilok határozzák meg: a `dev` profil a gyors fordítást, a `release` az optimalizált kódot helyezi előtérbe.
+A `release` profil beállításait, például az optimalizálás szintjét, mindig a végső program `Cargo.toml`-ja adja meg, a függőségek profiljait a Cargo figyelmen kívül hagyja.
 
 == Aszinkron programozás Rustban
 
 === Blokkoló és aszinkron modell
 
-#todo[a blokkoló, szálanként kapcsolatot kezelő modell és az aszinkron modell összehasonlítása]
+Egy hálózati szervernek egyszerre sok kapcsolatot kell kiszolgálnia, amelyek idejük nagy részében várakoznak.
+A blokkoló modellben minden kapcsolatot egy saját operációsrendszer-szál kezel, amely addig alszik, amíg a várt adat meg nem érkezik.
+Ennek a kódja egyszerű, egymás utáni lépésekből áll, a szálak viszont drágák: mindegyiknek saját verme van, a köztük való váltást az operációs rendszer végzi, és egy tétlen keep-alive kapcsolat is egy teljes szálat leköt.
+
+Az aszinkron modellben ezzel szemben kevés szál szolgál ki sok kapcsolatot.
+Minden kapcsolathoz egy könnyűsúlyú, saját verem nélküli feladat (task) tartozik, amely várakozás helyett átadja a vezérlést, így a szál közben más taskokat futtathat.
+Ennek ára, hogy a taskok csak a várakozási pontjaikon adják át a vezérlést, ezért egy blokkoló művelet, például egy szinkron fájlolvasás az egész szálat feltartja, a rajta váró többi taskkal együtt.
 
 === Future, executor és reaktor
 
-#todo[`Future`, `async`/`await`; az executor és a reaktor feladata (a reaktor az operációs rendszer eseményfigyelőjére épül, ezt elég röviden)]
+Az aszinkron modellt a Rust a `Future` trait köré építi (@rust-book).
+Egy future olyan számítás, amelynek az eredménye később áll elő: a `poll` metódusa `Poll::Ready` értékkel tér vissza, ha az eredmény elkészült, és `Poll::Pending`-gel, ha még várni kell rá.
+Utóbbi esetben a future elmenti a kapott `Waker`-t, és ezen keresztül jelzi, amikor érdemes újra meghívni.
+Future-t ritkán kell kézzel írni: az `async fn` egy future-t ad vissza, amelynek törzsében az `.await` megvárja egy másik future eredményét, a fordító pedig az egészet állapotgéppé alakítja, amelynek állapotai az `.await` pontok, így a kód a blokkolóhoz hasonlóan egymás utáni lépésekként olvasható.
+
+A szabványos könyvtár csak a `Future` traitet és a nyelvi elemeket adja, a futtatókörnyezet (runtime) külső könyvtárból származik.
+Ennek két fő része az executor és a reaktor (@fig:async. ábra).
+Az executor a futtatható taskok sorából sorra meghívja a taskok `poll` metódusát, a `Pending`-et adó task pedig kikerül a sorból, és csak akkor kerül vissza, amikor a `Waker`-én keresztül felébresztik.
+A reaktor azt figyeli, mikor érkezik adat egy kapcsolaton, vagy mikor jár le egy időzítő.
+Az operációs rendszer eseményfigyelő felületére épül (Linuxon ez az epoll, macOS-en és a BSD-rendszereken a kqueue, Windowson az IOCP), amelynek egyetlen hívásával egyszerre sok kapcsolat eseményeire lehet várakozni.
+Így egyetlen szál is sok kapcsolatot szolgálhat ki, mert sosem egy konkrét kapcsolatra vár, hanem mindig azt a taskot futtatja, amelyik éppen haladni tud.
+
+#figure(
+  block(width: 100%, inset: 1em, stroke: 0.5pt + gray, {
+    set text(size: 9pt)
+    let idle = rgb("#cfe0f1")
+    let busy = rgb("#f6dcc0")
+    let node(fill, name, detail) = rect(
+      width: 100%,
+      radius: 3pt,
+      fill: fill,
+      stroke: 0.5pt + gray,
+    )[#name \ #text(size: 7pt, detail)]
+    let step(label) = [#text(size: 7pt, label) \ #sym.arrow.r.long]
+    let gap = 8em
+    layout(size => {
+      let node-width = (size.width - 2 * gap) / 3
+      grid(
+        columns: (node-width, gap, node-width, gap, node-width),
+        align: center + horizon,
+        node(busy)[executor][a futtatható taskok sora],
+        step[1\. `poll`],
+        node(white)[task][`Pending`: még nincs adat],
+        step[2\. a kapcsolat és \ a `Waker` bejegyzése],
+        node(idle)[reaktor][epoll, kqueue, IOCP],
+        grid.cell(colspan: 5, pad(x: node-width / 2)[
+          #box(width: 100%, height: 10pt, stroke: (left: 0.5pt, right: 0.5pt, bottom: 0.5pt))[
+            #place(dx: -3.5pt, dy: -3.5pt, text(size: 7pt)[▲])
+          ]
+          #text(size: 8pt)[3\. adat érkezett: a reaktor a `Waker`-rel felébreszti a taskot, és az visszakerül a sorba]
+        ]),
+      )
+    })
+  }),
+  kind: image,
+  caption: [Egy hálózati olvasásra váró task útja az executor és a reaktor között],
+) <fig:async>
 
 === A smol és építőelemei
 
-#todo[a smol kis, önálló crate-ekből áll (async-executor, async-io, async-net, futures-lite, async-channel), és ezek közvetlenül is használhatók, így csak az kerül a programba, ami kell; az async-io reaktora, `Timer`-e és `block_on`-ja, az async-net `TcpListener`-e; egy executor több szálon (közös és szálankénti sorok, a szálak egymástól is átvehetnek taskot)]
+A Rustban széles körben használt aszinkron futtatókörnyezet a tokio (@tokio), én azonban a lehető legkönnyebb keretrendszerre törekedtem, ezért a HTTP-szerver futtatókörnyezetét a smol (@smol) építőelemeiből raktam össze.
+A smol maga is csak egy vékony réteg, amely kis, önálló crate-eket fog össze, ezek pedig a smol nélkül is használhatók.
+A szerver ezért csak arra az öt építőelemre épül, amelyekre valóban szüksége van, így a többi, például a fájlkezelés (`async-fs`) vagy a külső folyamatok indítása (`async-process`), a programba sem kerül be:
+
+- `async-executor`: a taskokat futtató executor (@async-executor);
+- `async-io`: a reaktor, az időzítők (`Timer`) és a `block_on` függvény, amely egy future-t az aktuális szálon futtat a befejeződéséig (@async-io);
+- `async-net`: aszinkron hálózati típusok, például a kapcsolatokat fogadó `TcpListener` (@async-net);
+- `futures-lite`: az aszinkron olvasás és írás traitjei (`AsyncRead`, `AsyncWrite`) és future-öket kombináló segédfüggvények (@futures-lite);
+- `async-channel`: aszinkron csatornák taskok és szálak között (@async-channel).
+
+#h(1.5em)
+
+Az `async-executor` `Executor` típusát több szál is futtathatja egyszerre.
+Az új és a felébresztett taskok egy közös sorba kerülnek, ahonnan a szálak egyszerre többet is átvesznek a saját, helyi sorukba, és ha egy szál kifogy a munkából, a többiek helyi sorából is átvehet taskokat (work stealing).
+Így a terhelés kiegyenlítődik a szálak között, és egy task bármelyik szálon folytatódhat.
 
 == A HTTP/1.1 protokoll
 
-=== Az üzenetek és a keretezés
+A HTTP/1.1 szöveges, kérés--válasz alapú protokoll, amelynek jelentését az RFC 9110 (@rfc9110), üzenetformátumát pedig az RFC 9112 írja le (@rfc9112).
+Egy kérés a kéréssorral kezdődik, amely a metódust (például `GET`), a kérés célját -- jellemzően egy útvonalat a lekérdezési paraméterekkel -- és a protokoll verzióját tartalmazza.
+Ezt soronként egy-egy `Név: érték` alakú fejlécmező követi, majd egy üres sor, végül a törzs, ha van.
+A válasz ugyanígy épül fel, csak az első sora egy háromjegyű állapotkódot tartalmaz: a 2xx siker, a 4xx a kliens, az 5xx pedig a szerver hibáját jelzi.
 
-#todo[a kérés (kéréssor, fejlécek, törzs) és a válasz felépítése, a `HEAD` metódus; a TCP-ben nincs „üzenet vége” jel: a fejléc végét az üres sor, a törzs hosszát a `Content-Length` vagy a `Transfer-Encoding: chunked` adja meg]
-
-=== Tartós kapcsolatok és request smuggling
-
-#todo[keep-alive és a `Connection` fejléc (HTTP/1.0 és 1.1 eltérő alapértelmezése), pipelining; ha két fél másképp határozza meg a kérés végét (két `Content-Length`, `Content-Length` és `Transfer-Encoding` együtt), a törzsből „új kérés” lesz]
+A TCP-kapcsolat csak bájtok folyamát szállítja, üzenethatárok nélkül (@rfc9293), ezért az üzenetnek magának kell jeleznie, hol ér véget.
+A fejléc végét az üres sor jelzi, a törzs hosszát pedig a `Content-Length` fejléc vagy a `Transfer-Encoding: chunked` fejléccel jelzett darabolt átvitel adja meg; ha egyik sincs, a kérésnek nincs törzse.
+A HTTP/1.1 kapcsolatai alapértelmezés szerint tartósak (keep-alive), így egy kapcsolaton egymás után több kérés is érkezhet, akár az előző válasz megvárása nélkül is (pipelining).
 
 == Beágyazott adattárolás
 
 === Beágyazott adatbázisok és a redb
 
-#todo[a beágyazott és a kliens--szerver adatbázis különbsége; a redb (lapokra osztott fájl, copy-on-write B-fa röviden, mert ez teszi lehetővé, hogy egyetlen író mellett a párhuzamos olvasók pillanatképet lássanak; tranzakciók; név szerinti táblák és multimap táblák; a `&[u8]` kulcsok bájtonkénti, lexikografikus összehasonlítása és a rendezett tartománybejárás, erre épül a kulcskódolás); miért nem SQLite (FFI, C függőség, fordítás és méret, SQL helyett típusos Rust API)]
+Egy kliens--szerver adatbázis-kezelő, például a PostgreSQL, önálló folyamatként fut, és az alkalmazás hálózati kapcsolaton keresztül küldi neki a lekérdezéseit.
+A beágyazott adatbázis ezzel szemben egy könyvtár, amely az alkalmazás folyamatán belül fut, és az adatokat egy helyi fájlban tárolja, így nincs külön üzemeltetendő adatbázisszerver, egy lekérdezés pedig egyszerű függvényhívás.
+
+A `redb` egy tisztán Rustban írt, beágyazott kulcs--érték tároló, amely ACID-tranzakciókat nyújt (@redb).
+A táblái a fájl lapjaiból (page) felépülő, kulcs szerint rendezett B+-fák, amelyek copy-on-write módon változnak: egy író tranzakció nem írja felül a meglévő lapokat, hanem a módosítottakról és a fölöttük lévőkről egészen a gyökérig új példányt készít, a véglegesítés (commit) pedig egy lépésben az új gyökérre állítja át az adatbázist.
+Így egy olvasó tranzakció végig a megnyitásakor érvényes gyökérből, vagyis az adatbázis egy rögzített pillanatképéből olvas, ezért a `redb` egy író mellett tetszőleges számú olvasót enged, és az olvasóknak nem kell az íróra várniuk.
+A táblákat a nevük azonosítja, a multimap táblákban pedig egy kulcshoz értékek rendezett halmaza tartozik.
+Bájtszelet (`&[u8]`) típusú kulcsoknál a `redb` a kulcsokat bájtonként, lexikografikusan hasonlítja össze, és egy kulcstartomány ebben a sorrendben járható be, erre épül az adatbázisréteg kulcskódolása (lásd az adatbázisréteg @sec:kodolas alfejezetét).
+
+Kézenfekvő választás lett volna a széles körben használt SQLite is (@sqlite), de a célom itt is egy tisztán Rustban írt, minél könnyebb megoldás volt.
+A SQLite C nyelven íródott, így Rustból csak FFI-n (foreign function interface) keresztül, C-fordítást igénylő függőséggel érhető el, és a programba egy teljes SQL-motor kerülne, holott az adatbázisrétegnek lekérdezőnyelvre nincs szüksége.
+A `redb` ráadásul típusos Rust API-t ad, amelynek helyes használatát a fordító ellenőrzi, míg egy SQL-lekérdezés hibája csak futásidőben derül ki.
 
 === Zero-copy szerializáció és az rkyv
 
-#todo[a zero-copy szerializáció fogalma; az rkyv archivált típusai (relatív eltolások abszolút mutatók helyett, `ArchivedString`, `ArchivedVec`, fix bájtsorrendű egészek); validálás (bytecheck); igazítás és az `unaligned` feature]
-
-== További felhasznált könyvtárak
-
-#todo[a http (közös típusok I/O nélkül) és a httparse (allokáció nélküli fejlécelemző, `Complete`/`Partial`); a bytes (`Bytes`, `BytesMut`, referenciaszámlált szeletek); a build_html (builder minta); az epub; a serde és a serde_json; a unicode-normalization]
+A hagyományos deszerializálás, például egy JSON-dokumentum beolvasása, a tárolt bájtokból új értéket épít fel, vagyis minden sztringnek és vektornak memóriát foglal, és átmásolja bele a tartalmát.
+A zero-copy szerializáció ehelyett úgy rendezi el a bájtokat, hogy azok átalakítás nélkül, közvetlenül adatszerkezetként legyenek olvashatók.
+Az `rkyv` (@rkyv) ehhez a `derive` makróval minden típushoz egy archivált párt generál (a `User` típushoz például egy `ArchivedUser`-t), amelynek memóriabeli elrendezése maga a tárolt formátum.
+Ebben a `String` helyén `ArchivedString`, a `Vec<T>` helyén `ArchivedVec` áll, az egészek pedig rögzített, alapértelmezés szerint little-endian bájtsorrenddel tárolódnak.
+Mivel egy közönséges mutató abszolút memóriacímet tartalmaz, amely minden betöltéskor más volna, az archivált típusok relatív eltolást tárolnak, vagyis azt, hogy az adat hány bájttal a mező után kezdődik.
+Ez akárhová kerülnek is a bájtok, érvényes marad, így például az `ArchivedString` közvetlenül a pufferből, `&str`-ként olvasható.
+Egy sérült bájtsorozat eltolásai viszont a pufferen kívülre is mutathatnának, ezért az `rkyv` a `bytecheck` könyvtárral (@bytecheck) a hozzáférés előtt validálja a bájtokat, az ellenőrzés nélküli hozzáférés pedig `unsafe`.
 
 #pagebreak()
 
@@ -1063,7 +1171,7 @@ Ha a metódus nem `GET`, az útvonal ismeretlen, vagy egy könyvhöz kötött ú
 === A metaadatok kinyerése
 
 Induláskor, még a szerver elindítása előtt az alkalmazás a könyvek mappájában közvetlenül található összes EPUB-fájlból egy `Book` rekordot készít, és ha a könyvnek van borítóképe, mellé egy `Cover` rekordot is.
-A fájlokat az `epub` könyvtár nyitja meg és elemzi, az alkalmazás pedig a könyv szövegét nem olvassa, csak a metaadatai közül veszi át a címet, a szerzőket, a fordítókat, a kiadót, a kiadás évét, a nyelvet, a témaköröket, a leírást és a borítóképet.
+A fájlokat az `epub` könyvtár (@epub) nyitja meg és elemzi, az alkalmazás pedig a könyv szövegét nem olvassa, csak a metaadatai közül veszi át a címet, a szerzőket, a fordítókat, a kiadót, a kiadás évét, a nyelvet, a témaköröket, a leírást és a borítóképet.
 
 Néhány mezőt nem lehet változatlanul átvenni.
 A szerzőt és a fordítót ugyanolyan metaadatelem írja le, ezeket egy MARC-szerepkód különbözteti meg (`aut` a szerző, `trl` a fordító), az évet pedig a fájl dátumai közül a kiadáshoz tartozóból veszem.
@@ -1161,14 +1269,14 @@ Az oldalakat teljes egészében a szerver állítja elő, a böngésző kész HT
 Ennek köszönhetően minden oldal egyetlen kéréssel betöltődik, a keresés egyszerű űrlapküldés, és mivel az oldal állapota az URL-ben van, a felület szkriptek nélkül is teljes értékűen működik.
 
 Minden oldal egy adatstruktúra, amelynek két formáját két külön mechanizmus adja.
-A JSON-formát a `serde` `Serialize` deriválása állítja elő, a HTML-formát pedig a `Page` trait, amelynek a `Serialize` a szupertraitje: az oldal a `title` metódusban a címét, a `content` metódusban a tartalmát adja meg, a `status` metódus pedig a válasz állapotkódját, amely alapértelmezetten 200.
+A JSON-formát a `serde` (@serde) `Serialize` deriválása állítja elő, a HTML-formát pedig a `Page` trait, amelynek a `Serialize` a szupertraitje: az oldal a `title` metódusban a címét, a `content` metódusban a tartalmát adja meg, a `status` metódus pedig a válasz állapotkódját, amely alapértelmezetten 200.
 A közös `render` függvény az oldalt a fejléccel, a lábléccel és a stíluslapra mutató hivatkozással teljes HTML-dokumentummá egészíti ki, vagy JSON-ná alakítja.
 A kettő közül az `Accept` fejléc választ: ha szerepel benne a `text/html`, amelyet minden böngésző elküld, a válasz HTML, egyébként JSON.
 Mivel ugyanaz az URL kétféle választ adhat, minden oldal válaszába `Vary: Accept` fejléc kerül, hogy egy gyorsítótár a kettőt ne keverje össze.
 Így egy új oldalhoz csak egy struktúrát és a `Page` trait két metódusát kell megírni, a JSON-forma magától adódik.
 A hibaoldalak is ugyanígy készülnek: a 404-es és az 500-as oldal csak a `status` metódust írja felül, így egy szkript a hibát is JSON-formában kapja meg.
 
-A HTML-t a `build_html` könyvtár builder mintájával állítom elő: az elemeket egymásra láncolt metódushívások (`with_attribute`, `with_html`, `with_paragraph`) építik fel, a végén pedig a `to_html_string` alakítja őket szöveggé.
+A HTML-t a `build_html` könyvtár (@build-html) builder mintájával állítom elő: az elemeket egymásra láncolt metódushívások (`with_attribute`, `with_html`, `with_paragraph`) építik fel, a végén pedig a `to_html_string` alakítja őket szöveggé.
 Sablonnyelvre és külön sablonfájlokra így nincs szükség, az oldalak szerkezete közönséges Rust-kód, amelyet a fordító ellenőriz.
 A könyvtár a beillesztett szövegben magától nem cseréli le a HTML-ben különleges jelentésű karaktereket (például a `<` jelet), a megjelenített adatok -- a cím, a szerzők, a leírás -- viszont mind az EPUB-fájlokból jönnek, amelyeket bárki elkészíthetett.
 Ezért minden ilyen szöveget a könyvtár `escape_html` függvényén vezetek át, mielőtt az oldalba kerül, így egy `<script>` elemet tartalmazó cím sem futtathat kódot a látogató böngészőjében (XSS).
@@ -1185,7 +1293,7 @@ Kész, osztály nélküli stíluslap, például a Simple.css vagy a Pico.css hel
 
 Az alkalmazás egyetlen futtatható állomány, amelyet négy parancssori kapcsoló állít be: a `--listen` a figyelt címet, a `--library` a könyvek mappáját, a `--database` az adatbázisfájlt, a `--log-file` pedig a naplófájlt adja meg.
 Mindegyiknek van alapértelmezése, a szerver például alapból csak a helyi gépről érhető el (`127.0.0.1:8080`).
-A naplózáshoz a `log` könyvtár felületét egy saját naplózóval valósítom meg, amely minden sort időbélyeggel, a forráshellyel és a szinttel együtt a standard kimenetre és a naplófájl végére is kiír, így az előző futások naplója is megmarad.
+A naplózáshoz a `log` könyvtár (@log) felületét egy saját naplózóval valósítom meg, amely minden sort időbélyeggel, a forráshellyel és a szinttel együtt a standard kimenetre és a naplófájl végére is kiír, így az előző futások naplója is megmarad.
 
 A `/health` állapotoldal a futó verziót és a könyvek számát mutatja.
 Ha az adatbázis nem olvasható, az oldal 503-as állapotkódot ad, így egy külső felügyeleti eszköz is észleli a hibát.

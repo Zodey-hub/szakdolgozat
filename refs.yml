@@ -151,3 +151,127 @@ rfc8187:
   url:
     value: https://www.rfc-editor.org/rfc/rfc8187
     date: 2026-11-26
+
+thiserror:
+  type: Repository
+  title: "thiserror: derive(Error)"
+  author: "Tolnay, David"
+  version: 2.0.21
+  url:
+    value: https://github.com/dtolnay/thiserror
+    date: 2026-11-26
+
+anyhow:
+  type: Repository
+  title: "anyhow: Flexible concrete Error type built on std::error::Error"
+  author: "Tolnay, David"
+  version: 1.0.105
+  url:
+    value: https://github.com/dtolnay/anyhow
+    date: 2026-11-26
+
+cargo-book:
+  type: Book
+  title: The Cargo Book
+  url:
+    value: https://doc.rust-lang.org/cargo/
+    date: 2026-11-26
+
+smol:
+  type: Repository
+  title: "smol: A small and fast async runtime"
+  author: "Glavina, Stjepan"
+  url:
+    value: https://github.com/smol-rs/smol
+    date: 2026-11-26
+
+futures-lite:
+  type: Repository
+  title: "futures-lite: Futures, streams, and async I/O combinators"
+  author: "Glavina, Stjepan"
+  version: 2.6.1
+  url:
+    value: https://github.com/smol-rs/futures-lite
+    date: 2026-11-26
+
+async-channel:
+  type: Repository
+  title: "async-channel: Async multi-producer multi-consumer channel"
+  author: "Glavina, Stjepan"
+  version: 2.5.0
+  url:
+    value: https://github.com/smol-rs/async-channel
+    date: 2026-11-26
+
+rfc9110:
+  type: Report
+  title: HTTP Semantics
+  author: ["Fielding, Roy T.", "Nottingham, Mark", "Reschke, Julian"]
+  date: 2022-06
+  serial-number: RFC 9110
+  publisher: RFC Editor
+  url:
+    value: https://www.rfc-editor.org/rfc/rfc9110
+    date: 2026-11-26
+
+sqlite:
+  type: Web
+  title: SQLite
+  url:
+    value: https://sqlite.org/
+    date: 2026-11-26
+
+bytecheck:
+  type: Repository
+  title: "bytecheck: Memory validation framework for Rust"
+  author: "Koloski, David"
+  version: 0.8.3
+  url:
+    value: https://github.com/rkyv/bytecheck
+    date: 2026-11-26
+
+build-html:
+  type: Repository
+  title: "build_html: Library for basic server-side rendering written in pure rust"
+  author: "Skubal, Joseph"
+  version: 2.9.0
+  url:
+    value: https://github.com/skubalj/build_html
+    date: 2026-11-26
+
+epub:
+  type: Repository
+  title: "epub: Library to support the reading of epub files"
+  author: "García Moreno, Daniel"
+  version: 2.1.6
+  url:
+    value: https://github.com/danigm/epub-rs
+    date: 2026-11-26
+
+serde:
+  type: Repository
+  title: "serde: A generic serialization/deserialization framework"
+  author: ["Tryzelaar, Erick", "Tolnay, David"]
+  version: 1.0.229
+  url:
+    value: https://github.com/serde-rs/serde
+    date: 2026-11-26
+
+log:
+  type: Repository
+  title: "log: A lightweight logging facade for Rust"
+  author:
+    name: "The Rust Project Developers"
+  version: 0.4.35
+  url:
+    value: https://github.com/rust-lang/log
+    date: 2026-11-26
+
+tokio:
+  type: Repository
+  title: "tokio: An event-driven, non-blocking I/O platform for writing asynchronous I/O backed applications"
+  author:
+    name: "Tokio Contributors"
+  url:
+    value: https://github.com/tokio-rs/tokio
+    date: 2026-11-26
